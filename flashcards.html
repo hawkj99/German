@@ -1,0 +1,6861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>German Flashcards (Offline)</title>
+<style>
+  :root{
+    --bg: #0b0d10;
+    --card: #14181d;
+    --ink: #e8eef7;
+    --muted: #9fb3c8;
+    --accent: #7aa2ff;
+    --border: #22303d;
+    --shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--ink);
+    font:16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .app{
+    display:grid;
+    grid-template-columns: 48px 1fr;
+    gap:0;
+  }
+  header{
+    position: sticky;
+    top:0;
+    z-index:50;
+    grid-column:1 / -1;
+    background: linear-gradient(180deg, rgba(11,13,16,.92), rgba(11,13,16,.78) 60%, rgba(11,13,16,0));
+    backdrop-filter: blur(6px);
+    padding: env(safe-area-inset-top) 12px 8px 12px;
+    border-bottom:1px solid var(--border);
+  }
+  .controls{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .btn{
+    appearance:none;
+    border:1px solid var(--border);
+    background:var(--card);
+    color:var(--ink);
+    padding:10px 12px;
+    border-radius:14px;
+    box-shadow: var(--shadow);
+    font-weight:600;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .az-rail{
+    position: sticky;
+    top: 64px;
+    align-self: start;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    padding:8px 4px;
+    user-select:none;
+  }
+  .az-rail button{
+    width:36px; height:24px; font-size:12px; line-height:24px;
+    background:transparent; color:var(--muted); border:0; border-radius:8px;
+  }
+  .az-rail button.active,.az-rail button:active{ color: var(--ink); background: #1e2732; }
+  .list{
+    padding: 8px 12px 40vh 8px;
+    display:flex;
+    flex-direction: column;
+    align-items:flex-start;
+  }
+  .card{
+    background: var(--card);
+    border:1px solid var(--border);
+    border-radius: 18px;
+    padding:16px 14px;
+    margin:10px 0;
+    box-shadow: var(--shadow);
+    transform: translateZ(0);
+    transition: background .15s ease, border-color .15s ease;
+    touch-action: manipulation;
+    width: 56%;
+    box-sizing: border-box;
+  }
+  .card:active{ background:#192028; }
+  .german{
+    font-size: 20px;
+    font-weight:700;
+    letter-spacing:.2px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .english{
+    margin-top:8px;
+    color: var(--muted);
+    font-size:18px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .english.hidden{ display:none; }
+  .section-anchor{ padding-top: 72px; margin-top: -72px; }
+  .search{ flex:1; display:flex; gap:8px; }
+  .search input{
+    flex:1; min-width:120px; background: #0f141a; color: var(--ink);
+    border:1px solid var(--border); border-radius:14px; padding:10px 12px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="controls">
+      <button class="btn" id="collapseAll">Show All German</button>
+      <button class="btn" id="revealAll">Reveal All English</button>
+      <div class="search">
+        <input id="filter" type="search" placeholder="Filter by German (e.g., sch…)" aria-label="Filter German" />
+      </div>
+    </div>
+  </header>
+
+  <nav class="az-rail" aria-label="Alphabet Jump"></nav>
+  <main class="list" id="list" aria-live="polite"></main>
+</div>
+
+<script>
+(function(){
+  const listEl    = document.getElementById('list');
+  const filterEl  = document.getElementById('filter');
+  const collapseBtn = document.getElementById('collapseAll');
+  const revealBtn   = document.getElementById('revealAll');
+  const railEl   = document.querySelector('.az-rail');
+
+  // ----------------- CUSTOM CSV DATA (example 3 cards) -----------------
+  // note: rows use ~~~ as separator and columns use |||; rows may be wrapped in quotes (we strip them)
+  const csvData = `
+"_ Entweder oder|||Either or
+
+Entweder sagst du mir, was los ist, oder ich gehe nach Hause.
+
+You’re either going to tell me what’s up or I’m going home.~~~"
+"_ Weder noch|||Neither nor
+
+Ich kann ihn weder sehen noch hören.
+
+I can neither see nor hear him.~~~"
+"(Nicht) Dürfen|||To (not) be allowed to
+
+Sie dürfen den Rasen nicht betreten.
+
+You are not allowed to walk on the grass.~~~"
+"Ab|||From
+
+Das Schwimmbad ist ab 07:00 Uhr geöffnet.
+
+The swimming pool is open from 07:00 (7 AM).~~~"
+"Abhauen|||To chop off
+
+Sei vorsichtig, oder du wirst dir noch einen Finger abhauen.
+
+Be careful, or you will chop off a finger.~~~"
+"Abholen|||To pick up
+
+Dein Vater wird dich in einer Stunde hier abholen.
+
+Your father will pick you up here in an hour.~~~"
+"Absehen|||To foresee
+
+Man konnte absehen, dass das passieren wird.
+
+One could foresee that this would happen.~~~"
+"Abstimmen|||To vote
+
+In wenigen Minuten werden wir abstimmen.
+
+We will vote in a few minutes.~~~"
+"Ach|||Oh
+
+Ach, das wusste ich nicht!
+
+Oh, I didn’t know that!~~~"
+"Achten|||To respect
+
+In unserem Büro achten wir alle die Regeln.
+
+In our office we all respect the rules.~~~"
+"Äh|||Um
+
+Äh, ich bin mir nicht sicher.
+
+Um, I am not sure.~~~"
+"Ähm|||Um
+
+Ähm, ich bin mir nicht sicher, was ich sagen soll.
+
+Um, I am not sure what to say.~~~"
+"Ähnlich|||Similar
+
+Die beiden Katzen sehen sich sehr ähnlich.
+
+The two cats look very similar to each other.~~~"
+"Allerdings|||Though
+
+Das Essen ist lecker, allerdings ist es ziemlich teuer.
+
+The food is tasty, though it is pretty expensive.~~~"
+"Alles|||Everything
+
+Er wird ihr morgen Abend alles genau erklären.
+
+He will explain everything to her tomorrow evening.~~~"
+"Als|||As or Than or When
+
+Ich verkleide mich als Vampir.
+I am dressing up as a vampire.
+
+Er arbeitet als Lehrer.
+He works as a teacher.
+
+Sie tritt als Sprecherin auf.
+She appears as a spokesperson.
+
+Er ist größer als ich.
+He is taller than I am.
+
+Das Auto ist teurer als das andere.
+This car is more expensive than the other one.
+
+Als ich ein Kind war, spielte ich viel draußen.
+When I was a child, I played outside a lot.
+
+Er lachte, als er den Witz hörte.
+He laughed when he heard the joke.
+
+
+
+~~~"
+"Also|||Hence
+
+Ich habe noch sehr viel zu tun, also kann ich nicht zur Party gehen.
+
+I still have a lot to do, hence I cannot go to the party.~~~"
+"Am|||At the
+
+Wir sehen uns später am Bahnhof.
+
+We’ll see each other later at the train station.~~~"
+"Ändern|||To change
+
+Hier werden sich viele Dinge ändern.
+
+Many things will change around here.~~~"
+"Anfassen|||To touch
+
+Im Museum darf man nichts anfassen.
+
+You are not allowed to touch anything at the museum.~~~"
+"Angefangen|||Started
+
+Der Film hat vor 20 Minuten angefangen.
+
+The film started 20 minutes ago.~~~"
+"Angegriffen|||Attacked
+
+Der Mann hat sie ohne Grund angegriffen!
+
+The man attacked her without reason!~~~"
+"Angehen|||To tackle
+
+Er ist sich nicht sicher, wie er dieses Problem angehen soll.
+
+He isn’t sure how he should tackle this problem.~~~"
+"Angenehm|||Pleasant or agreeable or nice
+
+Heute ist das Wetter wirklich angenehm.
+Today the weather is really pleasant.
+
+Es ist ein angenehmer Tag.
+It is a pleasant day.
+
+Das Gespräch war sehr angenehm.
+The conversation was very pleasant.
+
+Ich finde die Musik hier angenehm.
+I find the music here nice/pleasant.~~~"
+"Angestellt|||Employed
+
+Er ist in dieser Firma angestellt.
+
+He is employed by this company.~~~"
+"Angetan|||To have done something to someone, or impressed
+
+Du hast ihr viele schreckliche Dinge angetan!
+You have done many horrible things to her!
+
+Was hast du ihm angetan?
+What did you do to him?
+
+Das hast du mir angetan!
+You did this to me!
+
+Ich bin von dem Film ganz angetan.
+I’m really impressed by the movie.~~~"
+"Angreifen|||To attack
+
+Ich glaube, dass sie uns jeden Moment angreifen werden.
+
+I think they will attack any moment now.~~~"
+"Anhalten|||To stop
+
+Können wir an der nächsten Tankstelle anhalten?
+
+Can we stop at the next petrol station?~~~"
+"Ankommen|||To arrive
+
+Wann werden wir in Hamburg ankommen?
+
+When will we arrive in Hamburg?~~~"
+"Annehmen|||To accept
+
+Ich kann dieses teure Geschenk nicht annehmen!
+
+I cannot accept this expensive gift!~~~"
+"Ans|||To the
+
+Er trägt viele Kisten ans Auto.
+
+He is carrying many boxes to the car.~~~"
+"Anschauen|||To look at
+
+Ich könnte mir diese Landschaft den ganzen Tag anschauen.
+
+I could look at this landscape the entire day.~~~"
+"Anziehen|||To attract
+
+Die Flammen werden viele Mücken anziehen.
+
+The flames will attract many mosquitos.~~~"
+"Aufgeben|||To give up
+
+Wir haben so viel erreicht und dürfen jetzt nicht aufgeben.
+
+We have achieved so much and must not give up now.~~~"
+"Aufgehört|||Stopped
+
+Es hat endlich aufgehört zu regnen.
+
+It finally stopped raining.~~~"
+"Aufgenommen|||Recorded
+
+Die Polizei hat das Gespräch aufgenommen.
+
+The police have recorded the conversation.~~~"
+"Aufgeregt|||Excited
+
+Er ist aufgeregt, weil er heute nach Indien fliegt.
+
+He is excited because he is flying to India today.~~~"
+"Aufhalten|||To stop
+
+Wir müssen den Einbrecher aufhalten!
+
+We have to stop the robber!~~~"
+"Aufhören|||To stop
+
+Kannst du bitte damit aufhören, so zu schreien?
+
+Can you please stop shouting like that?~~~"
+"Aufmachen|||To open
+
+Wir sollten im Wohnzimmer ein Fenster aufmachen.
+
+We should open a window in the living room.~~~"
+"Aufnehmen|||To record
+
+Wir werden dieses Gespräch aufnehmen.
+
+We will record this conversation.~~~"
+"Aufpassen|||To watch
+
+Kannst du heute Abend bitte auf Michael aufpassen?
+
+Can you please watch Michael tonight?~~~"
+"Aufs|||On the
+
+Bitte stell das Glas nicht aufs Sofa.
+
+Please don’t put the glass on the sofa.~~~"
+"Auftauchen|||To turn up or pop up
+
+Manchmal kann man sehen, wie die Robben im Meer auftauchen.
+
+Sometimes one can see seals pop up in the sea.~~~"
+"Auseinander|||Apart
+
+Sie haben sich auseinander gelebt.
+
+They have drifted apart.~~~"
+"Ausgewandert|||Emigrated
+
+Sein Onkel Charles ist vor neun Jahren nach Australien ausgewandert.
+
+His uncle Charles emigrated to Australia nine years ago.~~~"
+"Ausmachen|||To switch off
+
+Kannst du bitte das Licht ausmachen, wenn du ins Bett gehst?
+
+Can you please switch off the lights when you go to bed?~~~"
+"Aussehen|||To look (like)
+
+Man kann nicht immer perfekt aussehen.
+
+One cannot always look perfect.~~~"
+"Außer|||Except
+
+Alle fanden den Film gut – außer dir!
+
+Everyone liked the film – except for you!~~~"
+"Außerdem|||In addition
+
+Das Essen war kalt und außerdem viel zu salzig.
+
+The food was cold and in addition to that far too salty.~~~"
+"Außerhalb|||Outside
+
+Unser Haus steht etwas außerhalb der Stadt.
+
+Our house is situated a little outside the city.~~~"
+"Beantworten|||To answer
+
+Er kann ihre vielen Fragen nicht beantworten.
+
+He cannot answer her many questions.~~~"
+"Bedeutet|||Means
+
+Das bedeutet, dass du keine Zeit hast.
+
+That means you don’t have time.~~~"
+"Beeil|||Hurry (Imperative)
+
+Beeil dich!
+
+Hurry up!~~~"
+"Beeilen|||To hurry
+
+Kannst du dich bitte etwas beeilen?
+
+Can you please hurry up a little?~~~"
+"Beenden|||To break up
+
+Er möchte seine Beziehung mit Susanne beenden.
+
+He wants to break up his relationship with Susanne.~~~"
+"Beendet|||Completed
+
+Endlich haben wir dieses Projekt beendet!
+
+We have finally completed this project!~~~"
+"Befinden|||To be
+
+Die beiden Kinder werden sich in Sicherheit befinden.
+
+Both children will be in safety.~~~"
+"Befreien|||To free
+
+Wir werden diese Tiere aus ihren Käfigen befreien.
+
+We will free these animals from their cages.~~~"
+"Begleiten|||To accompany
+
+Wir werden dich morgen zum Bahnhof begleiten.
+
+We will accompany you to the train station tomorrow.~~~"
+"Begraben|||To bury
+
+Heute Nachmittag wird er seinen Vater begraben.
+
+This afternoon he will bury his father.~~~"
+"Begreifen|||To understand
+
+Er kann ihre Denkweise einfach nicht begreifen.
+
+He simply cannot understand her way of thinking.~~~"
+"Behalten|||To keep
+
+Das kannst du behalten.
+
+You can keep that.~~~"
+"Behandeln|||To treat
+
+Du solltest deinen Chef mit etwas mehr Respekt behandeln.
+
+You should treat your boss with a little more respect.~~~"
+"Behandelt|||Treated
+
+Ich werde hier wie ein kleines Kind behandelt!
+
+I’m being treated like a little child here!~~~"
+"Behaupten|||To assert
+
+Viele Leute behaupten, Experten auf einem Gebiet zu sein.
+
+Many people assert being an expert in a field.~~~"
+"Bei|||At
+
+Wir treffen uns um 18:00 Uhr bei der Bäckerei.
+
+We are meeting at 18:00 (6 PM) at the bakery.~~~"
+"Beim|||At the
+
+Ich werde dich beim Restaurant treffen.
+
+I will meet you at the restaurant.~~~"
+"Beinahe|||Almost
+
+Ich hätte beinahe die Tasse fallen lassen!
+
+I almost dropped the cup!~~~"
+"Bekannt|||Known
+
+Er ist der Polizei bereits bekannt.
+
+He is already known to the police.~~~"
+"Bekannter|||famous
+
+Richard Wagner ist ein bekanter deutscher Komponist.
+
+Richard Wagner is a famous German composer.~~~"
+"Bekommen|||To get
+
+Wann werden wir eine Gehaltserhöhung bekommen?
+
+When will we get a pay raise?~~~"
+"Beleidigen|||To offend
+
+Bitte versuch nicht, ständig irgendwelche Leute zu beleidigen!
+
+Please try not to offend people on a constant basis!~~~"
+"Bemerkt|||Notices
+
+Er bemerkt, wie sie etwas von seinem Schrebtisch klaut.
+
+He notices her stealing something from his desk.~~~"
+"Benutzen|||To use
+
+Kann ich dein Handy benutzen?
+
+Can I use your cell phone?~~~"
+"Benutzt|||Used
+
+Er hat diesen Computer noch nie benutzt.
+
+He has never used this computer.~~~"
+"Beobachtet|||Observed
+
+Der Täter hat sein Opfer mehrere Wochen lang beobachtet.
+
+The perpetrator observed his victim for several weeks.~~~"
+"Bereit|||Ready
+
+Er ist für ein neues Abenteuer bereit.
+
+He is ready for a new adventure.~~~"
+"Bereits|||Already
+
+Sie ist bereits ins Bett gegangen.
+
+She already went to bed.~~~"
+"Beruhigen|||To calm down
+
+Du musst dich etwas beruhigen.
+
+You have to calm down a bit.~~~"
+"Berühren|||To touch
+
+Ich mag es nicht, wenn mich fremde Leute berühren.
+
+I don’t like it when strangers touch me.~~~"
+"Beschäftigt|||Busy
+
+Ich kann heute nicht ausgehen, da ich beschäftigt bin.
+
+I can’t go out tonight as I am busy.~~~"
+"Beschissen|||Shitty
+
+Mein Tag war wirklich beschissen.
+
+My day was really shitty.~~~"
+"Beschützen|||To protect
+
+Wölfe beschützen ihre Jungen vor Feinden.
+
+Wolves protect their young from enemies.~~~"
+"Besitzen|||To own
+
+Es ist schön, einen Garten zu besitzen.
+
+It is nice to own a garden.~~~"
+"Besonderes|||Special
+
+Ich habe dir ein besonderes Geschenk gekauft.
+
+I bought you a special present.~~~"
+"Besonders|||Particularly
+
+Ich finde diesen Schal besonders schön.
+
+I find this scarf particularly nice.~~~"
+"Besorgen|||To get
+
+Wir müssen etwas zu essen besorgen.
+
+We have to get something to eat.~~~"
+"Besorgt|||Concerned
+
+Wir sind wegen seines Verhaltens sehr besorgt.
+
+We are very concerned about his behavior.~~~"
+"Besprechen|||To discuss
+
+Wir haben heute Nachmittag viele Dinge zu besprechen.
+
+We have to discuss many things this afternoon.~~~"
+"Bestätigen|||To confirm
+
+Ich kann bestätigen, dass ich diesen Mann nicht kenne.
+
+I can confirm that I do not know this man.~~~"
+"Bestehen|||To consist
+
+Diese Getränke bestehen zum Großteil aus Zucker und Wasser.
+
+These drinks mainly consist of sugar and water.~~~"
+"Bestimmen|||To determine
+
+Heute Mittag werden wir einen neuen Anführer bestimmen.
+
+This afternoon we will determine a new leader.~~~"
+"Bestimmt|||Certainly
+
+Wir werden uns bestimmt bald wiedersehen!
+
+We will certainly see each other again soon!~~~"
+"Besuchen|||To visit
+
+In zwei Tagen werden wir meine Großmutter besuchen.
+
+In two days time we will visit my grandmother.~~~"
+"Beten|||To pray
+
+Wir werden beten, dass alles gut geht.
+
+We will pray that everything will go well.~~~"
+"Betreffen|||To concern
+
+Zum Glück werden dich diese Probleme nicht betreffen.
+
+Luckily these problems will not concern you.~~~"
+"Betreten|||To enter
+
+Du darfst das Haus nicht betreten.
+
+You are not allowed to enter the house.~~~"
+"Betrunken|||Drunk
+
+Er ist gestern betrunken von der Party nach Hause gekommen.
+
+Yesterday he came home drunk after the party.~~~"
+"Bewahren|||To preserve
+
+Wir müssen diese Kunstwerke vor Schäden bewahren.
+We have to preserve these paintings from damage.
+
+Wir müssen die historischen Gebäude bewahren.
+We must preserve the historic buildings.
+
+Die alten Traditionen sollen bewahrt werden.
+The old traditions should be preserved.
+
+Er bewahrte sie vor einem schlimmen Fehler.
+He protected her from a serious mistake.
+
+Bewahre deine persönlichen Daten gut.
+Keep your personal data safe.~~~"
+"Bewegen|||To move
+
+Er kann seinen Arm nicht bewegen.
+
+He cannot move his arm.~~~"
+"Beweglich|||Moveable
+
+Der Tisch und die Stühle sind beweglich.
+
+The table and chairs are moveable.~~~"
+"Bewegt|||Moved
+
+Ich glaube, dass sich dort etwas bewegt hat.
+
+I think something moved over there.~~~"
+"Beweisen|||To prove
+
+Er muss beweisen, dass er die Arbeit erledigen kann.
+
+He has to prove that he can do the work.~~~"
+"Bewusst|||Aware
+
+Es war mir nicht bewusst, dass du so über mich denkst.
+
+I wasn’t aware that you think of me like that.~~~"
+"Bieten|||To offer
+
+Dieser Job kann mir kein angemessenes Gehalt bieten.
+
+This job cannot offer me adequate payment.~~~"
+"Bisher|||So far
+
+Bisher haben sich unsere Hunde noch nie gestritten.
+
+So far, our dogs never had a fight with each other.~~~"
+"Bitten|||To ask
+
+Ich würde dich gerne bitten, deine Füße vom Tisch zu nehmen.
+
+I would like to ask you to take your feet off the table.~~~"
+"Blöd|||Stupid
+
+Dieser Witz ist wirklich blöd.
+
+This joke is really stupid.~~~"
+"Bloß|||Only
+
+Ich habe bloß zwei Minuten Zeit.
+
+I only have two minutes.~~~"
+"Brauchen|||To need
+
+Ich glaube nicht, dass wir einen Regenschirm brauchen werden.
+
+I don’t think we’ll need an umbrella.~~~"
+"Brav|||Well-behaved
+
+Deine Kinder sind wirklich sehr brav!
+
+Your children are really well-behaved!~~~"
+"Brennen|||To burn
+
+Dieses Holz wird gut brennen, weil es so trocken ist.
+
+This wood will burn well because it is so dry.~~~"
+"Dabei|||In the process
+
+Ich habe mich gedehnt und dabei habe ich mich verletzt.
+
+I was stretching, and, in the process, I hurt myself.~~~"
+"Dadurch|||Thereby
+
+Es hat geregnet. Dadurch wurden alle Pflanzen mit Wasser versorgt.
+
+It rained. Thereby all plants were provided with water.~~~"
+"Dafür|||For this
+
+Ich gebe dir 20 Euro dafür.
+
+I will give you 20 Euros for this.~~~"
+"Dagegen|||Against
+
+Ich habe nichts dagegen, dass du hierbleibst.
+
+I have nothing against you staying here.~~~"
+"Daher|||Hence
+
+Er hat kein Geld und daher kann er auch nicht ausgehen.
+He doesn’t have any money and hence he cannot go out.
+
+Er war geschwächt von der Krankheit und daher anfällig für Infektionen.
+He was weakened by the disease, and hence vulnerable to infection.~~~"
+"Dahin|||Then
+
+Ich komme morgen wieder – und bis dahin solltest du dich ausruhen.
+
+I will come back tomorrow – and until then you should rest.~~~"
+"Damals|||At the time
+
+Damals hatte ich noch eine andere Ansicht.
+
+At the time I had other views.~~~"
+"Damit|||In order to
+
+Sie muss Geld sparen, damit sie in den Urlaub gehen kann.
+
+She has to save up money in order to go on vacation.~~~"
+"Danach|||After that
+
+Sie geht jetzt in den Supermarkt und danach ins Kino.
+
+She is going to the supermarket now and after that to the cinema.~~~"
+"Dankbar|||Thankful or Grateful
+
+Wir sind sehr dankbar für alles, was du getan hast.
+
+We are very grateful for everything you have done.~~~"
+"Daran|||It
+
+Ich kann daran wirklich nichts aussetzen.
+
+I really cannot fault it.~~~"
+"Darauf|||Thereon
+
+Unsere gesamten Ergebnisse basieren darauf.
+
+Our entire results are based thereon.~~~"
+"Daraus|||From that
+
+Ich folgere daraus, dass wir mit unserer Annahme richtig lagen.
+
+I conclude from that that we were correct in our assumptions.~~~"
+"Darin|||Therein
+
+Du bist faul – und darin liegt das Problem.
+
+You are lazy – and therein lies the problem.~~~"
+"Darüber|||About it
+
+Sie möchte nicht darüber sprechen.
+
+She does not want to talk about it.~~~"
+"Darum|||That is why
+
+Ich bin krank und darum kann ich nicht arbeiten gehen.
+
+I am sick and that is why I cannot go to work.~~~"
+"Das Alte|||The old
+
+Es ist nicht gut, immer an das Alte zu glauben.
+
+It is not good to only believe in the old.~~~"
+"Das Alter|||The age
+
+Das Alter spielt für viele Leute eine wichtige Rolle.
+
+Age plays an important role for many people.~~~"
+"Das Angebot|||The offer
+
+Ich würde dein Angebot gerne annehmen.
+
+I would like to accept your offer.~~~"
+"Das Ansehen|||The reputation
+
+Sie genießt ein hohes Ansehen in dieser Stadt.
+
+She has a great reputation in this city.~~~"
+"Das Auge|||The eye
+
+Er wird dich im Auge behalten.
+
+He will keep an eye on you.~~~"
+"Das Bad|||The bathroom
+
+Du bist jetzt schon seit einer Stunde im Bad!
+
+You have been in the bathroom for an hour now!~~~"
+"Das Benehmen|||The behavior
+
+Sein Benehmen gestern war sehr unhöflich.
+
+His behavior yesterday was very rude.~~~"
+"Das Bild|||The image
+
+Dieses Bild gefällt mir am besten.
+
+I like this image the most.~~~"
+"Das Büro|||The office
+
+Könnten Sie bitte in mein Büro kommen?
+
+Could you please come to my office?~~~"
+"Das Dorf|||The village
+
+Das Dorf hat viele kleine Läden.
+
+The village has many small shops.~~~"
+"Das Drehbuch|||The screenplay or script
+
+Das Drehbuch für den Film war ausgezeichnet.
+The screenplay for the movie was excellent.
+
+Der Schauspieler hat das Drehbuch gründlich gelesen.
+The actor studied the script thoroughly.~~~"
+"Das Ereignis|||The event
+
+Die Oper wird das Ereignis des Jahres werden!
+
+The opera will be the event of the year!~~~"
+"Das Ergebnis|||The result
+
+Das Ergebnis des Spiels ist wirklich überraschend.
+
+The result of the game is really surprising.~~~"
+"Das Fass|||The barrell
+
+In diesem Fass lagern wir einen teuren Wein.
+
+In this barrel we store an expensive wine.~~~"
+"Das Feld|||The field
+
+Auf dem Feld stehen zahlreiche Kühe.
+
+There are numerous cows in the field.~~~"
+"Das Fest|||The party
+
+Das Fest war wirklich unterhaltsam.
+
+The party was really entertaining.~~~"
+"Das Fett|||The fat
+
+Sie möchte das Fett am Fleisch nicht essen.
+
+She doesn’t want to eat the fat on the meat.~~~"
+"Das Fressen|||The food
+
+Die Tiere im Stall brauchen noch Fressen.
+
+The animals in the stable still need food.~~~"
+"Das Gebiet|||The area
+
+Dieses Gebiet ist für seinen Wein bekannt geworden.
+
+This area has become well-known for its wine.~~~"
+"Das Gefängnis|||The prison
+
+Sie muss für 10 Jahre ins Gefängnis.
+
+She has to go to prison for 10 years.~~~"
+"Das Geheimnis|||The secret
+
+Sie hat ein großes Geheimnis.
+
+She has a big secret.~~~"
+"Das Gehirn|||The brain
+
+Der Chirurg operierte viele Stunden an seinem Gehirn.
+
+The surgeon operated many hours on his brain.~~~"
+"Das Gen|||The gene
+
+Wir müssen das Gen finden, um es besser zu verstehen.
+
+We have to find the gene in order to understand it better.~~~"
+"Das Genie|||The genius
+
+Er ist ein echtes Genie, wenn es um Mathematik geht.
+
+He is a real genius when it comes to mathematics.~~~"
+"Das Gerät|||The device
+
+Sie weiß nicht, wie das Gerät funktioniert.
+
+She does not know how the device works.~~~"
+"Das Geräusch|||The noise
+
+Ich habe ein Geräusch im Keller gehört!
+
+I heard a noise in the basement!~~~"
+"Das Gericht|||The court
+
+Das Gericht hat entschieden, dass er für drei Jahre ins Gefängnis muss.
+
+The court has decided that he has to go to prison for three years.~~~"
+"Das Gerücht|||The rumor
+
+Es ist nur ein Gerücht, dass er eine Affäre hat.
+
+It is just a rumor that he has an affair.~~~"
+"Das Geschäft|||The business
+
+Das Geschäft verbessert sich immer mehr.
+
+Business is improving more and more.~~~"
+"Das Gesetz|||The law
+
+Man muss das Gesetz befolgen.
+
+One has to follow the law.~~~"
+"Das Gesicht|||The face
+
+Sie hat ein hübsches Gesicht.
+
+She has a pretty face.~~~"
+"Das Gespräch|||The conversation
+
+Das Gespräch mit dir hat mir sehr gut gefallen.
+
+I really liked the conversation with you.~~~"
+"Das Gewehr|||The shotgun
+
+Der Mann holt sein Gewehr, weil er jagen geht.
+
+The man gets his shotgun because he is going hunting.~~~"
+"Das Grad|||The degree (temperature) or geometric angle or academic degree
+
+Die Temperatur ist seit gestern um ein Grad angestiegen.
+
+The temperature has risen by a degree since yesterday.~~~"
+"Das Hemd|||The shirt
+
+Dieses Hemd steht dir wirklich sehr gut!
+
+This shirt suits you really well!~~~"
+"Das Interesse|||The interest
+
+Er hat großes Interesse an der Kunstausstellung gezeigt.
+
+He has shown great interest in the art exhibition.~~~"
+"Das Jahrhundert|||The century
+
+Dieses Jahrhundert hat sich sehr viel geändert.
+
+This century a lot has changed.~~~"
+"Das Kleid|||The dress
+
+Dieses Kleid sieht toll aus, aber es ist zu teuer.
+
+This dress looks great, but it is too expensive.~~~"
+"Das Kommando|||The command
+
+Wir haben das Kommando erhalten, zu schießen.
+
+We have received the command to shoot.~~~"
+"Das Labor|||The laboratory
+
+Im Labor werden wichtige Experiemente durchgeführt.
+
+Important experiments are being carried out in the laboratory.~~~"
+"Das Lager|||The stock
+
+Wir haben nicht mehr viele Dosen auf Lager.
+
+We don’t have very many cans in stock.~~~"
+"Das Land|||The land
+
+Die Familie besitzt hier viel Land.
+
+The family owns a lot of land here.~~~"
+"Das Leck|||The leak
+
+Wir müssen das Leck so schnell wie möglich reparieren!
+
+We have to fix the leak as soon as possible!~~~"
+"Das Leid|||The sorrow
+
+Es gibt viel Leid auf der Welt.
+There is a lot of sorrow in this world.
+
+Viele Menschen auf der Welt erfahren großes Leid.
+Many people in the world experience great suffering.
+
+Sie konnte das Leid der anderen nicht ertragen.
+She could not bear the suffering of others.
+
+Nach dem Unfall war viel Leid zu bewältigen.
+After the accident, there was much sorrow to cope with.~~~"
+"Das Lied|||The song
+
+Sie spielen immer das gleiche Lied im Radio.
+
+They always play the same song on the radio.~~~"
+"Das Loch|||The hole
+
+Du solltest aufpassen, dass du nicht in dieses Loch fällst!
+
+You should be careful not to fall into this hole!~~~"
+"Das Los|||The raffle ticket
+
+Wir sollten ein Los kaufen – vielleicht gewinnen wir!
+
+We should buy a raffle ticket – maybe we will win!~~~"
+"Das Mädchen|||The girl
+
+Das Mädchen freut sich schon sehr auf die Schule.
+
+The girl is really looking forward to school.~~~"
+"Das Mädel|||The girl
+
+Das Mädel in meiner Klasse gefällt mir sehr gut.
+
+I really like the girl in my class.~~~"
+"Das Mark|||The bone marrow or pulp
+
+Wenn du den Knochen öffnest, kannst du das Mark sehen.
+
+When you open the bone, you can see the marrow.~~~"
+"Das Maul|||The mouth
+
+Der Hund hat einen Stock im Maul.
+
+The dog has a stick in its mouth.~~~"
+"Das Medikament|||The drug
+
+Du musst dein Medikament immer vor dem Essen nehmen.
+
+You have to take your drug always before eating.~~~"
+"Das Meer|||The sea
+
+Meine Eltern haben ein Haus am Meer.
+
+My parents have a house by the sea.~~~"
+"Das Messer|||The knife
+
+Sei vorsichtig mit dem Messer, es ist sehr scharf.
+
+Be careful with the knife, it is very sharp.~~~"
+"Das Mitglied|||The member
+
+Sie müssen ein Mitglied sein, um in diesen Bereich gehen zu können.
+
+You have to be a member in order to go into this area.~~~"
+"Das Negativ|||The negative
+
+Das Negativ dieses Bildes muss gut aufbewahrt werden.
+
+The negative of this photo must be stored safely.~~~"
+"Das Opfer|||The victim
+
+Das Opfer war 20 Jahre alt.
+
+The victim was 20 years old.~~~"
+"Das Publikum|||The audience
+
+Das Publikum klatschte laut und wollte mehr.
+
+The audience applauded loudly and wanted more.~~~"
+"Das Recht|||The right
+
+Er hat das Recht, sich einen Anwalt zu nehmen.
+
+He has the right to a lawyer.~~~"
+"Das Regal|||The shelf
+
+Auf dem Regal stehen Bücher und Magazine.
+
+There are books and magazines on the shelf.~~~"
+"Das Rennen|||The race
+
+Sie wird das Rennen gewinnen!
+
+She will win the race!~~~"
+"Das Risiko|||The risk
+
+Wir können ihn nicht operieren, da das Risiko zu hoch ist.
+
+We cannot operate on him as the risk is too high.~~~"
+"Das Schätzchen|||The sweetheart
+
+Schätzchen, kannst du bitte die Musik etwas leiser stellen?
+
+Sweetheart, could you please turn down the music a little?~~~"
+"Das Schicksal|||The fate
+
+Manche Menschen glauben an das Schicksal.
+
+Some people believe in fate.~~~"
+"Das Schiff|||The ship
+
+Auf dem Schiff befinden sich viele Leute.
+
+There are many people on the ship.~~~"
+"Das Schild|||The sign
+
+Ich kann nicht lesen, was auf dem Schild steht.
+
+I cannot read what it says on the sign.~~~"
+"Das Schloss|||The castle
+
+Am Wochenende werden wir das Schloss besichtigen gehen.
+
+On the weekend we will go and visit the castle.~~~"
+"Das Schwert|||The sword
+
+Im Mittelalter kämpften Ritter mit einem Schwert.
+
+In the medieval ages knights fought with a sword.~~~"
+"Das Thema|||The topic
+
+Wir fanden das Thema des Buches nicht sehr ansprechend.
+
+We didn’t find the topic of the book very appealing.~~~"
+"Das Tor|||The gate
+
+Wieso ist das Tor zum Garten offen?
+
+Why is the gate to the garden open?~~~"
+"Das Übel|||The evil
+
+Es gibt viel zu viel Übel in der Welt.
+
+There is far too much evil in the world.~~~"
+"Das Unrecht|||The wrong
+
+Du liegst mit deiner Annahme im Unrecht.
+
+You are in the wrong with your assumption.~~~"
+"Das Unternehmen|||The underaking
+
+Das Unternehmen ist relativ kompliziert.
+
+The undertaking is relatively complicated.~~~"
+"Das Verbrechen|||The crime
+
+Das Verbrechen in unserer Stadt nimmt jedes Jahr zu.
+
+Crime in our city rises every year.~~~"
+"Das Vergnügen|||The pleasure
+
+Es ist mir ein Vergnügen, Sie kennenzulernen.
+
+It is a pleasure to meet you.~~~"
+"Das Vertrauen|||The trust
+
+Du verdienst mein Vertrauen nicht!
+
+You don’t deserve my trust!~~~"
+"Das Wesen|||The nature
+
+Es ist das Wesen des Wolfes, jagen zu gehen.
+
+It is the nature of a wolf to go hunting.~~~"
+"Das Wiedersehen|||The reunion
+
+Das Wiedersehen war einfach herrlich!
+
+The reunion was simply delightful!~~~"
+"Das Wohl|||The well
+
+Dem Manager liegt das Wohl seiner Mitarbeiter sehr am Herzen.
+
+The manager cares a lot about the well-being of his employees.~~~"
+"Das Wunder|||The miracle
+
+Es ist ein Wunder, dass dir nichts passiert ist.
+
+It is a miracle that nothing happened to you.~~~"
+"Das Zeichen|||The sign
+
+Wenn er das Zeichen gibt, greifen wir an.
+
+When he gives the sign, we will attack.~~~"
+"Das Zeug|||The stuff
+
+Wir sollten dieses ganze Zeug wegschmeißen.
+
+We should throw all this stuff away.~~~"
+"Das Ziel|||The aim or goal or target or destination
+
+Das Ziel ist, so viel Produkte wie möglich zu verkaufen.
+The aim is to sell as many products as possible.
+
+Wir haben unser Ziel erreicht.
+We have reached our destination.
+
+Das Ziel der Wanderung ist die Bergspitze.
+The goal of the hike is the mountain peak.
+
+Mein Ziel ist es, Deutsch fließend zu sprechen.
+My goal is to speak German fluently.
+
+Das Hauptziel des Projekts ist die Verbesserung der Effizienz.
+The main objective of the project is improving efficiency.
+
+Er hat das Ziel nicht getroffen.
+He didn’t hit the target.
+
+~~~"
+"Dasselbe|||The same
+
+Ich kann nicht glauben, dass sie jeden Tag dasselbe Essen in der Kantine servieren!
+
+I cannot believe that they serve the same food every day in the canteen!~~~"
+"Davon|||Thereof
+
+Davon habe ich ja noch gar nichts gehört!
+
+I have not heard anything thereof!~~~"
+"Davor|||Before
+
+Ich bin vor 10 Jahren nach Deutschland gezogen. Und davor war ich noch nie hier gewesen!
+
+I moved to Germany 10 years ago. And before that I had never been here!~~~"
+"Dazu|||For this purpose
+
+Wir werden dazu Handschuhe anziehen.
+
+We will put on gloves for this purpose.~~~"
+"Definitiv|||Definitely
+
+Es macht definitiv keinen Sinn, darüber zu streiten.
+
+There is definitely no point in arguing about it.~~~"
+"Deiner|||Yours
+
+Ich bin mir nicht sicher, wessen Schal das ist. Ist das deiner?
+
+I am not sure whose scarf this is. Is it yours?~~~"
+"Denen|||To whom
+
+Die Kinder, denen du gestern deinen Basketball gegeben hast, sind hier.
+
+The children, to whom you gave your basketball yesterday, are here.~~~"
+"Denn|||Because
+
+Sie kommt nicht mit ins Restaurant, denn sie hat schon gegessen.
+
+She is not coming to the restaurant because she has already eaten.~~~"
+"Dennoch|||Nevertheless
+
+Er ist sehr müde, aber dennoch kümmert er sich um seine kranke Tochter.
+
+He is very tired, but he is looking after his sick daughter nevertheless.~~~"
+"Der Abstand|||The distance
+
+Der Abstand von hier bis zum Sofa beträgt 3 Meter.
+
+The distance from here to the sofa is 3 meters (amounts to 3 meters).~~~"
+"Der Affe|||The monkey
+
+Der Affe ist auf dem Baum und schläft.
+
+The monkey is on the tree and sleeps.~~~"
+"Der Anfang|||The beginning
+
+Jeder neue Anfang ist schwer.
+
+Every new beginning is difficult.~~~"
+"Der Angriff|||The attack
+
+Der Angriff fand gestern Abend in einer Gasse statt.
+
+The attack happened last night in an alley.~~~"
+"Der Anruf|||The call
+
+Ich habe den Anruf verpasst.
+
+I missed the call.~~~"
+"Der Anwalt|||The lawyer
+
+Ich möchte meinen Anwalt sprechen.
+
+I would like to speak to my lawyer.~~~"
+"Der Anzug|||The tuxedo
+
+Der schwarze Anzug sieht wirklich elegant aus.
+
+The black tuxedo looks really elegant.~~~"
+"Der Ärger|||The anger
+
+Sein Ärger verflog nach ein paar Minuten.
+
+His anger dispersed after a few minutes.~~~"
+"Der Auftrag|||The order
+
+Die Firma hat gerade einen neuen Auftrag erhalten.
+
+The company just received a new order.~~~"
+"Der Bauer|||The farmer
+
+Der Bauer muss jeden Morgen früh aufstehen.
+
+The farmer has to get up early every morning.~~~"
+"Der Befehl|||The command
+
+Er hat den Befehl gegeben.
+
+He gave the command.~~~"
+"Der Bereich|||The area
+
+Dieser Bereich ist für Besucher geschlossen.
+
+This area is closed for visitors.~~~"
+"Der Bericht|||The report
+
+Sie hat den Bericht noch nicht gelesen.
+
+She hasn’t read the report yet.~~~"
+"Der Beruf|||The profession
+
+Sie hat sich definitiv den richtigen Beruf ausgewählt.
+
+She definitively picked the right profession.~~~"
+"Der Bescheid|||The notice
+
+Wir haben Bescheid bekommen, dass wir abreisen können.
+
+We have received notice that we can depart.~~~"
+"Der Besitz|||The possession or ownership or property
+
+Er hat seinen gesamten Besitz verloren.
+He lost all of his possessions.
+
+Sein Besitz umfasst mehrere Häuser und Autos.
+His possessions include several houses and cars.
+
+Der Besitz von Alkohol ist in manchen Ländern eingeschränkt.
+The possession of alcohol is restricted in some countries.
+
+Sie verlor all ihren Besitz bei dem Brand.
+She lost all her property in the fire.~~~"
+"Der Besuch|||The visit
+
+Wir sollten unserer Tante einen Besuch abstatten.
+
+We should go and pay a visit to our aunt.~~~"
+"Der Beweis|||The evidence
+
+Ohne einen Beweis können sie ihn nicht festnehmen.
+
+Without evidence they cannot arrest him.~~~"
+"Der Blödsinn|||The nonsense
+
+Was er da erzählt ist kompletter Blödsinn.
+
+It is complete nonsense what he says there.~~~"
+"Der Boden|||The ground
+
+Der Boden im Wald ist weich.
+
+The ground in the forest is soft.~~~"
+"Der Brauch|||The custom
+
+Bei uns ist es Brauch, an Weihnachten in die Kirche zu gehen.
+
+It is a custom here to go to church on Christmas.~~~"
+"Der Bürgermeister|||The mayor
+
+Morgen wird der Bürgermeister eine Rede halten.
+
+Tomorrow the mayor will give a speech.~~~"
+"Der Chef|||The Boss
+
+Der Chef hat gesagt, dass wir eine Pause machen können.
+
+The Boss said that we can take a break.~~~"
+"Der Dank|||The thanks
+
+Ein besonderer Dank geht an Frau Hamann.
+
+A special thanks goes to Ms. Hamann.~~~"
+"Der Dienst|||The service
+
+Er muss dieses Jahr seinen Dienst beim Militär leisten.
+
+This year he has to do his military service.~~~"
+"Der Dom|||The cathedral or dome
+
+Heute Nachmittag werden wir den Dom besichtigen.
+
+This afternoon we will visit the dome.~~~"
+"Der Druck|||The pressure
+
+Wir haben momentan viel Druck bei der Arbeit.
+
+At the moment we are under a lot of pressure at work.~~~"
+"Der Ehemann|||The husband
+
+Mein Ehemann kümmert sich heute um die Kinder.
+
+My husband is looking after the children today.~~~"
+"Der Einsatz|||The use
+
+Der Einsatz von Chemikalien ist nicht gestattet.
+
+The use of chemicals is not permitted.~~~"
+"Der Erfolg|||The success
+
+Man muss viel arbeiten, wenn man Erfolg haben will.
+
+One has to work a lot if one wants to have success.~~~"
+"Der Ernst|||The seriousness
+
+Du hast den Ernst der Lage noch immer nicht begriffen.
+
+You still don’t understand the seriousness of this situation.~~~"
+"Der Fahrer|||The driver
+
+Der Fahrer hat das Auto schlecht geparkt.
+
+The driver parked the car badly.~~~"
+"Der Fall|||The case
+
+Die Polizei konnte den Fall nicht lösen.
+
+The police could not solve the case.~~~"
+"Der Fang|||The catch
+
+Diesen Fang will ich meinem Großvater zeigen!
+
+I want to show this catch to my grandfather!~~~"
+"Der Fehler|||The error
+
+Die Meldung sagt, dass es einen Fehler gibt.
+
+The message says that there is an error.~~~"
+"Der Feind|||The enemy
+
+Wir werden den Feind besiegen!
+
+We will defeat the enemy!~~~"
+"Der Fick|||The fuck
+
+Er bedeutet mir nichts, es war nur ein Fick.
+
+He doesn’t mean anything to me, it was just a fuck.~~~"
+"Der Frieden|||The peace
+
+In vielen Ländern herrscht momentan kein Frieden.
+
+There are many countries in which there is no peace at the moment.~~~"
+"Der Führer|||The leader
+
+Unser Führer wird uns nachher alles genau erklären.
+
+Our leader will explain everything to us in detail later on.~~~"
+"Der Gang|||The aisle
+
+Ich möchte gerne einen Sitz am Gang, wenn es geht.
+
+If possible, I would like a seat by the aisle.~~~"
+"Der Gedanke|||The thought
+
+Das ist ein angenehmer Gedanke.
+
+That is a pleasant thought.~~~"
+"Der Gefallen|||The favor
+
+Ich schulde dir einen Gefallen.
+
+I owe you a favor.~~~"
+"Der Geist|||The spirit
+
+Sein Geist wird immer bei uns sein.
+
+His spirit will always be with us.~~~"
+"Der Gewinn|||The profit
+
+Wir werden den Gewinn an eine wohltätige Organisation spenden.
+
+We will donate the profit to a charity.~~~"
+"Der Glückwunsch|||The congratulations
+
+Viele Leute haben ihr einen Glückwunsch geschickt.
+
+Many people sent her their congratulations.~~~"
+"Der Graben|||The ditch
+
+Der Graben ist einige Meter tief.
+
+The ditch is a few meters deep.~~~"
+"Der Grund|||The reason
+
+Es gibt keinen Grund, warum ich bleiben sollte.
+
+There is no reason why I should stay.~~~"
+"Der Hals|||The neck
+
+Mein Hals tut weh und ich kann ihn kaum bewegen.
+
+My neck hurts and I can barely move it.~~~"
+"Der Halt|||The stop
+
+Das ist unser Halt, wir müssen hier aussteigen.
+
+This is our stop, we have to get off here.~~~"
+"Der Hass|||The hatred
+
+Er ist von Hass erfüllt.
+
+He is full of hatred.~~~"
+"Der Haufen|||The heap
+
+Wir haben noch einen Haufen Klamotten, den wir sortieren müssen.
+
+We have a heap of clothes that we need to sort.~~~"
+"Der Held|||The hero
+
+Der Held rettet die Stadt nun schon zum zweiten Mal.
+
+The hero saves the city for the second time now.~~~"
+"Der Hintern|||The butt
+
+Wenn du nicht sofort herkommst, werde ich dir den Hintern versohlen!
+
+If you don’t come over here right now I will smack your butt!~~~"
+"Der Hinweis|||The reference
+
+Das ist ein Hinweis auf dein schlechtes Benehmen.
+
+This is a reference to your bad behavior.~~~"
+"Der Hut|||The hat
+
+Dieser Hut steht dir wirklich gut!
+
+This hat suits you really well!~~~"
+"Der Irre|||The lunatic
+
+Der Irre ist aus der Anstalt ausgebrochen.
+
+The lunatic escaped the asylum.~~~"
+"Der Junge|||The boy
+
+Dieser Junge ist unglaublich frech!
+
+This boy is unbelievably cheeky!~~~"
+"Der Kampf|||The fight
+
+Du wirst den Kampf gewinnen!
+
+You will win the fight!~~~"
+"Der Kauf|||The purchase
+
+Du solltest dir den Kauf eines Hauses wirklich überlegen.
+
+You should really think about the purchase of a house.~~~"
+"Der Kerl|||The guy
+
+Hat dieser Kerl mit dir gesprochen?
+
+Did this guy talk to you?~~~"
+"Der Knast|||The jail
+
+Er muss für diesen Diebstahl einige Jahre in den Knast gehen.
+
+He has to go to jail for many years for this robbery.~~~"
+"Der Knochen|||The bone
+
+Es wäre das Beste, wenn wir den Knochen röntgen.
+
+It would be best to do an X-ray on the bone.~~~"
+"Der Koffer|||The suitcase
+
+Ich habe meinen Koffer schon vor zwei Wochen gepackt!
+
+I packed my suitcase two weeks ago!~~~"
+"Der Kollege|||The colleague
+
+Mein Kollege wird Ihnen das Hotelzimmer zeigen.
+
+My colleague will show you your hotel room.~~~"
+"Der Krieger|||The warrior
+
+Eines Tages wirst du ein großartiger Krieger sein!
+
+One day you will be a great warrior!~~~"
+"Der Kuchen|||The cake
+
+Diesen Kuchen hat meine Großmutter gebacken!
+
+My grandmother baked this cake!~~~"
+"Der Kumpel|||The mate
+
+Ist das dein Kumpel?
+
+Is that your mate?~~~"
+"Der Kunde|||The customer
+
+An der Kasse steht ein Kunde und wartet.
+
+There is a customer waiting at the checkout.~~~"
+"Der Kurs|||The course
+
+Ich glaube nicht, dass ich diesen Kurs beenden werde.
+
+I don’t think I will finish this course.~~~"
+"Der Laden|||The store
+
+Der Laden gehört meiner Tante.
+
+This store belongs to my aunt.~~~"
+"Der Laut|||The sound
+
+Er darf keinen Laut machen!
+
+He is not allowed to make a sound!~~~"
+"Der Liebling|||The favorit
+
+Er ist der Liebling seiner Eltern.
+
+He is his parents’ favorite.~~~"
+"Der Lügner|||The liar
+
+Ich kann nicht glauben, dass er ein solcher Lügner ist!
+
+I cannot believe that he is such a liar!~~~"
+"Der Mantel|||The coat
+
+Diesen Mantel wollte ich mir schon seit langer Zeit kaufen.
+
+I have wanted to buy this coat for a long time.~~~"
+"Der Meister|||The master
+
+Der Meister hat gesagt, dass wir mehr lernen müssen.
+
+The master said that we have to study more.~~~"
+"Der Mensch|||The man
+
+Der Mensch ist zu vielen außergewöhlichen Dingen fähig.
+
+Man is capable of doing many extraordinary things.~~~"
+"Der Mist|||The manure
+
+Wir müssen den Mist rausbringen.
+
+We have to take out the manure.~~~"
+"Der Mistkerl|||The bastard
+
+Sie will diesen Mistkerl nie wiedersehen.
+
+She does not want to see this bastard ever again.~~~"
+"Der Mond|||The moon
+
+Der Mond scheint heute hell vom Himmel.
+
+Today the moon shines brightly in the sky.~~~"
+"Der Mord|||The murder
+
+Der Mord kam überall in den Nachrichten.
+
+The murder was all over the news.~~~"
+"Der Mut|||The courage
+
+Es braucht viel Mut, einen Job im Ausland anzunehmen.
+
+It takes a lot of courage to accept a job abroad.~~~"
+"Der Nächste|||The next
+
+Der Nächste, bitte!
+
+Next, please!~~~"
+"Der Narr|||The fool
+
+Er benimmt sich wie ein kompletter Narr, wenn er Anna sieht.
+
+He behaves like a complete fool when he sees Anna.~~~"
+"Der Notfall|||The emergency
+
+Ich muss mit ihr sprechen – es ist ein Notfall!
+
+I have to talk to her – it is an emergency!~~~"
+"Der Nutzen|||The use
+
+Der Nutzen dieser Maschine ist mir unbekannt.
+
+The use of this machine is unknown to me.~~~"
+"Der Ort|||The place
+
+Dieser Ort ist irgendwie unheimlich.
+
+This place is creepy somehow.~~~"
+"Der Priester|||The priest
+
+Der Priester wird in wenigen Minuten ankommen.
+
+The priest will arrive in a few minutes.~~~"
+"Der Prozess|||The process
+
+Der Prozess ist lange und kompliziert.
+
+The process is long and complicated.~~~"
+"Der Quatsch|||The nonsense
+
+Könnt ihr bitte mit diesem Quatsch aufhören?
+
+Can you please stop with this nonsense?~~~"
+"Der Rat|||The advice
+
+Ich möchte dich gerne um Rat bitten.
+
+I would like to ask you for advice.~~~"
+"Der Raum|||The room
+
+Wir müssen diesen Raum besser nutzen.
+
+We need to use this room better.~~~"
+"Der Richter|||The judge
+
+Der Richter ist sehr streng.
+
+The judge is very strict.~~~"
+"Der Riese|||The giant
+
+Der Riese wird uns alle vernichten!
+
+The giant will destroy us all!~~~"
+"Der Rücken|||The back
+
+Sein Rücken tut ihm weh.
+
+His back hurts.~~~"
+"Der Ruf|||The reputation
+
+Die Firma hat einen ausgezeichneten Ruf.
+
+The company has an excellent reputation.~~~"
+"Der Russe|||The Russian
+
+Der Russe hat lange Jahre in einem Orchester gespielt.
+
+The Russian has played in an orchestra for many years.~~~"
+"Der Schaden|||The damage
+
+Der Schaden ist zu groß – man kann es nicht mehr reparieren.
+
+The damage is too great – it cannot be repaired anymore.~~~"
+"Der Schatten|||The shadow
+
+In der Hitze legen sich alle Touristen in den Schatten eines Baumes.
+
+During the heat all tourists lie in the shadow of a tree.~~~"
+"Der Schatz|||The treasure
+
+Die Piraten haben einen Schatz vergraben.
+
+The pirates buried a treasure.~~~"
+"Der Scheck|||The check
+
+Wir werden Ihnen einen Scheck schreiben.
+
+We will write you a check.~~~"
+"Der Scherz|||The joke or hoax
+
+Sei nicht böse, das war doch nur ein Scherz!
+
+Don’t be mad, it was just a joke!~~~"
+"Der Schlag|||The shock
+
+Es war ein schwerer Schlag für ihn, als er von ihrem Tod erfuhr.
+
+It was a great shock to him when he heard about her death.~~~"
+"Der Schluss|||The ending
+
+Der Schluss war ziemlich unerwartet.
+
+The ending was pretty unexpected.~~~"
+"Der Schritt|||The step or pace
+
+Er hat einen schnellen Schritt.
+
+He has a quick pace.~~~"
+"Der Schuss|||The shot
+
+Er hat in seiner Nachbarschaft einen Schuss gehört.
+
+He heard a shot in his neighborhood.~~~"
+"Der Schutz|||The protection
+
+Der Schutz der Umwelt ist etwas, das alle ernst nehmen sollten.
+
+The protection of the environment is something everyone should take seriously.~~~"
+"Der Schwanz|||The tail
+
+Der Hund hat einen braunen Schwanz.
+
+The dog has a brown tail.~~~"
+"Der See|||The lake
+
+Jedes Wochenende fahren wir an denselben See, weil er so schön ist.
+
+Every weekend we go to the same lake because it is so beautiful.~~~"
+"Der Selbstmord|||The suicide
+
+Für viele Menschen ist Selbstmord die einzige Lösung.
+
+For many people suicide is the only solution.~~~"
+"Der Sieg|||The victory
+
+Nach diesem Kampf wird der Sieg unser sein!
+
+After this battle victory will be ours!~~~"
+"Der Sinn|||The sense
+
+Manche Menschen haben einen sechsten Sinn.
+
+Some people have a sixth sense.~~~"
+"Der Sitz|||The seat
+
+Dieser Sitz ist für meinen Mann reserviert.
+
+This seat has been reserved for my husband.~~~"
+"Der Sklave|||The slave
+
+Der Sklave musste viele Jahre lang hart arbeiten.
+
+The slave had to work hard for many years.~~~"
+"Der Spion|||The spy
+
+Der Spion schreibt sich wichtige Informationen auf.
+
+The spy writes down important information.~~~"
+"Der Staat|||The nation
+
+Die Wirtschaft eines Staates hängt von seinen Importen und Exporten ab.
+
+A nation's economy depends on its imports and exports.~~~"
+"Der Stellplatz|||The parking space
+
+Sie können Ihr Auto auf diesem Stellplatz lassen.
+
+You can leave your car in this parking space.~~~"
+"Der Stich|||The stitch
+
+Die Wunde musste mit einem Stich genäht werden.
+
+The wound had to be sewed with a stitch.~~~"
+"Der Stock|||The stick
+
+Der Hund rennt dem Stock hinterher.
+
+The dog runs after the stick.~~~"
+"Der Stoff|||The material
+
+Der Stoff dieser Jacke ist ganz weich.
+
+The material of this jacket is really soft.~~~"
+"Der Stolz|||The pride
+
+Zu viel Stolz ist nicht gut.
+
+Too much pride isn’t good.~~~"
+"Der Strand|||The beach
+
+Ich möchte mich an den Strand legen und einfach nichts tun.
+
+I want to lie on the beach and simply do nothing.~~~"
+"Der Streit|||The dispute
+
+Der Streit wird auch in Zukunft anhalten.
+
+The dispute will continue in the future.~~~"
+"Der Strom|||The current (of water or electricity)
+
+Der Strom fließt durch diese beiden Kabel.
+The current goes through these two cables.
+
+Der Strom ist ausgefallen.
+The electricity went out.
+
+Elektrischer Strom wird in Volt und Ampere gemessen.
+Electric current is measured in volts and amperes.
+
+er Strom des Flusses ist sehr stark.
+The current of the river is very strong.
+
+Wir schwammen gegen den Strom.
+We swam against the current.
+
+Ein Strom von Menschen bewegte sich durch die Straßen.
+A stream of people moved through the streets.
+
+~~~"
+"Der Sturm|||The storm
+
+Wenn der Sturm kommt, sollten wir im Haus sein.
+
+We should be inside the house when the storm arrives.~~~"
+"Der Teil|||The part
+
+Dieser Teil der Geschichte ist spannend.
+
+This part of the story is gripping.~~~"
+"Der Termin|||The appointment
+
+Leider muss ich den Termin morgen absagen.
+
+Unfortunately, I have to cancel the appointment tomorrow.~~~"
+"Der Tod|||The death
+
+Am Ende eines jeden Lebens kommt der Tod.
+
+At the end of every life comes death.~~~"
+"Der Ton|||The sound
+
+Dieser Ton passt super zum Film.
+
+This sound goes very well with the film.~~~"
+"Der Trottel|||The idiot or moron
+
+Michael ist ein echter Trottel!
+
+Michael is a real moron!~~~"
+"Der Typ|||The type
+
+David ist ganz und gar nicht mein Typ.
+
+David isn’t my type at all.~~~"
+"Der Umstand|||The circumstance
+
+Dieser Umstand ist alles andere als angenehm.
+
+This circumstance is anything but comfortable.~~~"
+"Der Unfall|||The accident
+
+Bei dem Unfall wurde niemand verletzt.
+
+No one was hurt during the accident.~~~"
+"Der Unsinn|||The nonsense
+
+Bitte hör mit diesem Unsinn auf!
+
+Please stop with this nonsense!~~~"
+"Der Unterschied|||The difference
+
+Es gibt keinen Unterschied zwischen diesen beiden Hemden.
+
+There is no difference between these two shirts.~~~"
+"Der Urlaub|||The holiday
+
+Der Urlaub hat uns allen wirklich sehr gefallen.
+
+We all really liked the holiday.~~~"
+"Der Verkauf|||The sale
+
+Bei dem Verkauf haben wir viel Geld eingenommen.
+
+We made a lot of money at the sale.~~~"
+"Der Verstand|||The mind
+
+Manchmal kann einem der Verstand Streiche spielen.
+
+Sometimes the mind can play tricks on you.~~~"
+"Der Versuch|||The attempt
+
+Du hast nur einen Versuch.
+
+You only have one attempt.~~~"
+"Der Vertrag|||The contract
+
+Er muss seinen Vertrag nur noch unterschreiben.
+
+He just needs to sign his contract.~~~"
+"Der Vorschlag|||The proposal
+
+Ich denke nicht, dass wir ihren Vorschlag annehmen werden.
+
+I don’t think we will accept her proposal.~~~"
+"Der Wagen|||The car
+
+Wow! Dieser Wagen ist unglaublich!
+
+Wow! This car is incredible!~~~"
+"Der Wahnsinn|||The madness
+
+Was du tun willst ist doch kompletter Wahsinn!
+
+It is complete madness what you are trying to do!~~~"
+"Der Wert|||The value
+
+Der Wert des Hauses wird auf 300.000 Euro geschätzt.
+
+The value of the house is estimated to be 300,000 Euros.~~~"
+"Der Wichser|||The wanker
+
+Ich kann nicht glauben, was dir dieser Wichser angetan hat!
+
+I cannot believe what this wanker did to you!~~~"
+"Der Wille|||The will or intention or determination
+
+Es war sein letzter Wille, hier begraben zu werden.
+It was his last will to be buried here.
+
+Wo ein Wille ist, ist auch ein Weg.
+Where there is a will, there is a way.
+
+Er hat den starken Willen, erfolgreich zu sein.
+He has a strong will to be successful.
+
+Es war sein fester Wille, die Prüfung zu bestehen.
+It was his firm intention to pass the exam.
+
+Man muss den eigenen Willen durchsetzen können.
+One must be able to assert one’s own will.~~~"
+"Der Wunsch|||The wish or desire or request
+
+Es war sein letzter Wunsch, hier begraben zu werden.
+
+It was his last request to be buried here.~~~"
+"Der Zeitpunkt|||The time
+
+Endlich ist der Zeitpunkt gekommen!
+
+Finally, the time has come!~~~"
+"Der Zufall|||The coincidence
+
+Wir haben den gleichen Rock an – was für ein Zufall!
+
+We are wearing the same skirt – what a coincidence!~~~"
+"Der Zugang|||The access
+
+Der Zugang wurde Ihnen nicht gestattet.
+
+You have not been granted access.~~~"
+"Der Zustand|||The state
+
+Leider ist der Patient in einem schlechten Zustand.
+
+Unfortunately, the patient is in a bad state.~~~"
+"Der Zweifel|||The doubt
+
+Du bist ohne Zweifel müde nach diesem Tag.
+
+You are no doubt tired after this day.~~~"
+"Deren|||Whose
+
+Die Frau, deren Mann im Ausland wohnt, spricht Russisch.
+
+The woman, whose husband lives abroad, speaks Russian.~~~"
+"Derjenige|||The one
+
+Er ist derjenige, der sich immer beschwert.
+
+He is the one who is always complaining.~~~"
+"Derselbe|||The same
+
+Das ist derselbe Mann, der mein Auto gestohlen hat!
+
+That is the same guy that stole my car!~~~"
+"Des|||Of
+
+Das ist das Fahrrad des Schriftstellers.
+
+This is the bike of the writer.~~~"
+"Deshalb|||That is why
+
+Er fühlt sich nicht gut und deshalb bleibt er zu Hause.
+
+He doesn’t feel well and that is why he is staying at home.~~~"
+"Dessen|||Whose
+
+Der Mann, dessen Kinder schon erwachsen sind, lebt alleine.
+
+The man, whose children are already grown-ups, lives alone.~~~"
+"Desto mehr|||all the more or ""the more... the more..."" (umso mehr is interchangeable)
+
+JEs regnet, also freue ich mich desto mehr auf den Urlaub.
+It’s raining, so I’m all the more looking forward to the vacation.
+
+Je länger ich warte, desto mehr freue ich mich darauf.
+The longer I wait, the more I look forward to it.
+
+Je mehr ich lerne, desto mehr verstehe ich.
+The more I study, the more I understand.
+
+Je älter er wird, desto mehr schätzt er Ruhe.
+The older he gets, the more he values peace.~~~"
+"Deswegen|||Because of this
+
+Die Arbeit ist zu stressig und deswegen werde ich kündigen.
+
+The work is too stressful and because of this I will resign.~~~"
+"Deutlich|||Clearly
+
+Sie hat ihm deutlich gesagt, dass sie ihn nicht mehr sehen will.
+
+She clearly told him that she does not want to see him again.~~~"
+"Dick|||Fat
+
+Er ist in letzter Zeit ziemlich dick geworden.
+
+He has gotten pretty fat recently.~~~"
+"Die Absicht|||The intention
+
+Es war nicht meine Absicht, dir weh zu tun.
+
+It was not my intention to hurt you.~~~"
+"Die Abteilung|||The department
+
+Unsere Abteilung hat beschlossen, zu streiken.
+
+Our department decided to strike.~~~"
+"Die Ahnung|||The idea
+
+Ich habe keine Ahnung, wo sie ist.
+
+I have no idea where she is.~~~"
+"Die Akte|||The file
+
+In dieser Akte stehen streng vertrauliche Informationen.
+
+This file contains strictly confidential information.~~~"
+"Die Angelegenheit|||The matter
+
+Du wirst diese Angelegenheit so schnell wie möglich regeln.
+
+You will deal with this matter as soon as possible.~~~"
+"Die Anweisung|||The instruction
+
+Ich habe die Anweisung erhalten, nichts zu sagen.
+
+I have received the instruction to say nothing.~~~"
+"Die Armen|||The poor
+
+Die Armen können sich kaum etwas zu essen leisten.
+
+The poor can barely (or hardly) afford something to eat.~~~"
+"Die Art|||The type
+
+Welche Art von Mensch bist du?
+
+What type of person are you?~~~"
+"Die Aufgabe|||The task
+
+Die Aufgabe war so schwierig, dass ich sie nicht lösen konnte.
+
+The task was so difficult that I couldn’t solve it.~~~"
+"Die Aufmerksamkeit|||The attention
+
+Er will mit seinem Verhalten Aufmerksamkeit erregen.
+
+He wants to get attention through his behavior.~~~"
+"Die Aufnahme|||The recording
+
+Die Aufnahme ist schon ziemlich alt, doch sie ist unbeschädigt.
+
+This recording is pretty old, but it has not been damaged.~~~"
+"Die Aussage|||The statement
+
+Deine Aussage stimmt nicht mit der von gestern überein.
+
+Your statement does not correspond to the one from yesterday.~~~"
+"Die Bedeutung|||The importance
+
+Ich hoffe, dass dir die Bedeutung dieser Entdeckung klar ist.
+
+I hope you realize the importance of this discovery.~~~"
+"Die Bewegung|||The movement
+
+Diese Bewegung tut weh.
+
+This movement hurts.~~~"
+"Die Beziehung|||The relationship
+
+Unsere Beziehung läuft momentan nicht so gut.
+
+Our relationship isn’t going so well at the moment.~~~"
+"Die Bitte / bitte|||The request / please
+
+Ich habe eine Bitte : Kannst du mich bitte zum Bahnhof fahren?
+
+I have a request: Can you drive me to the train station please?~~~"
+"Die Botschaft|||The message or Embassy
+
+Die Botschaft war, dass wir noch etwas warten sollen.
+The message was that we should wait a little longer.
+
+Die Botschaft des Films ist sehr wichtig.
+The message of the film is very important.
+
+Ich habe eine Botschaft für dich.
+I have a message for you.
+
+Die deutsche Botschaft in Washington ist groß.
+The German embassy in Washington is large.
+
+Ich muss zur Botschaft, um ein Visum zu beantragen.
+I have to go to the embassy to apply for a visa.~~~"
+"Die Braut|||The bride
+
+Die Braut trug ein wunderschönes weißes Kleid.
+
+The bride wore a beautiful white dress.~~~"
+"Die Brücke|||The bridge
+
+Ich kann nicht glauben, dass diese Brücke schon so alt ist!
+
+I cannot believe that this bridge is already this old!~~~"
+"Die Brust|||The breast
+
+Der Arzt hat ihre Brust genau untersucht.
+
+The doctor checked her breast carefully.~~~"
+"Die Bühne|||The stage
+
+Gleich wird er auf die Bühne kommen!
+
+Soon he will enter the stage!~~~"
+"Die Deckung|||The cover
+
+Wir müssen uns sofort Deckung suchen.
+
+We have to look for cover immediately.~~~"
+"Die Ecke|||The corner
+
+Wir sollten die Pflanze dort in die Ecke stellen.
+
+We should put the plant over there in the corner.~~~"
+"Die Ehe|||The marriage
+
+Die Ehe ist nicht für jeden.
+
+Marriage is not for everyone.~~~"
+"Die Ehre|||The honor
+
+Es ist mir eine Ehre, Sie kennenzulernen.
+
+It is an honor to meet you.~~~"
+"Die Einheit|||The unit
+
+Jede Einheit muss geprüft und dann an den Kunden geschickt werden.
+
+Each unit has to be checked and then be sent to the customers.~~~"
+"Die Entscheidung|||The decision
+
+Das war keine leichte Entscheidung.
+
+This wasn’t an easy decision.~~~"
+"Die Entschuldigung|||The apology
+
+Deine Entschuldigung kommt zu spät.
+
+Your apology is too late.~~~"
+"Die Erde|||The earth
+
+Die Erde ist ein Planet.
+
+Earth is a planet.~~~"
+"Die Erfahrung|||The experience
+
+Je älter man ist, umso mehr Erfahrung hat man.
+
+The older you are, the more experience you have.~~~"
+"Die Erinnerung|||The memory
+
+Ich habe eine schöne Erinnerung an diesen Ort.
+
+I have a great memory of this place.~~~"
+"Die Erklärung|||The explanation
+
+Er ist ohne eine Erklärung aus dem Büro gegangen.
+
+He left the office without an explanation.~~~"
+"Die Erlaubnis|||The permission
+
+Er braucht die Erlaubnis seines Vaters, wenn er das Auto haben möchte.
+
+He needs the permission of his father if he wants to have the car.~~~"
+"Die Fähigkeit|||The ability
+
+Er hat die Fähigkeit, alle mit seinen Geschichten zu unterhalten.
+
+He has the ability to entertain everyone with his stories.~~~"
+"Die Falle|||The trap
+
+Der Biber sitzt in einer Falle fest.
+
+The beaver is caught in a trap.~~~"
+"Die Firma|||The company
+
+Die Firma macht viel Geld.
+
+The company makes a lot of money.~~~"
+"Die Flasche|||The bottle
+
+Dort drüben steht eine Flasche Wein.
+
+There is a bottle of wine over there.~~~"
+"Die Flucht|||The escape
+
+Den Gefangenen ist die Flucht aus dem Gefängnis gelungen.
+
+The prisoners were successful in their escape from prison.~~~"
+"Die Folge|||The result
+
+Die Folge seines schlechten Verhaltens ist eine Strafe.
+
+The result of his bad behavior is a punishment.~~~"
+"Die Freiheit|||The freedom
+
+Die Tiere genießen ihre Freiheit.
+
+The animals are enjoying their freedom.~~~"
+"Die Freude|||The pleasure
+
+Es ist mir eine Freude, Sie hier willkommen heißen zu dürfen.
+
+It is a pleasure to be able to welcome you here.~~~"
+"Die Freundschaft|||The friendship
+
+Unsere Freundschaft ist mir unglaublich wichtig.
+
+Our friendship is incredibly important to me.~~~"
+"Die Gabe|||The gift
+
+Manche Menschen haben eine besondere Gabe.
+
+Some people have a special gift.~~~"
+"Die Gefahr|||The risk
+
+Das können wir nicht machen – die Gefahr ist einfach zu groß.
+
+We cannot do that – the risk is simply too great.~~~"
+"Die Gegend|||The area
+
+Ich kann mir nicht vorstellen, in dieser Gegend zu wohnen.
+
+I cannot imagine living in this area.~~~"
+"Die Gelegenheit|||The opportunity
+
+Das ist die perfekte Gelegenheit, um Geld zu machen!
+
+This is the perfect opportunity to make money!~~~"
+"Die Gerade|||The straight line
+
+Wir werden jetzt eine Gerade zeichnen.
+
+We will now draw a straight line.~~~"
+"Die Geschichte|||The history
+
+Die Geschichte dieses Landes ist faszinierend.
+
+The history of this country is fascinating.~~~"
+"Die Gesellschaft|||The society
+
+In unserer Gesellschaft werden nicht alle gleich behandelt.
+
+Not everyone is treated equally in our society.~~~"
+"Die Gewalt|||The violence
+
+Leider nimmt die Gewalt unter Jugendlichen immer mehr zu.
+
+Unfortunately, violence amongst juveniles is increasing.~~~"
+"Die Gnade|||The mercy
+
+Bitte haben Sie Gnade mit mir!
+
+Please have mercy with me!~~~"
+"Die Grenze|||The limit or border
+
+Diese Tour hat mich an meine persönliche Grenze gebracht.
+
+This tour has brought me to my personal limit.~~~"
+"Die Größe|||The size
+
+Die Größe des Gebäudes ist wirklich beeindruckend.
+
+The size of this building is really impressive.~~~"
+"Die Hälfte|||The half
+
+Die Hälfte deines Essens landet immer im Müll.
+
+Half of your food always ends up in the bin.~~~"
+"Die Hast|||The haste
+
+Das solltest du nicht in der Hast machen.
+
+You should not do this in haste.~~~"
+"Die Haut|||The skin
+
+Du musst deine Haut pflegen, sonst wird sie trocken.
+
+You have to look after your skin or it will get dry.~~~"
+"Die Heilige|||The saint (Female)
+
+Die Heilige wird von vielen Leuten verehrt.
+
+The saint is worshipped by many people.~~~"
+"Die Helden|||The heroes
+
+Vielen sind die Helden der griechischen Mythologie bekannt.
+
+Many know the heroes from Greek mythology.~~~"
+"Die Herren|||The gentlemen
+
+Diese Herren habe ich noch nie hier gesehen.
+
+I have never seen these Sirs here before.~~~"
+"Die Hölle|||The hell
+
+In der Hölle ist es angeblich heiß.
+
+Apparently (supposedly or allegedly), it is hot in hell.~~~"
+"Die Hure|||The whore
+
+Sie schläft mit jedem – sie ist eine echte Hure.
+
+She sleeps with everyone – she is a real whore.~~~"
+"Die Hütte|||The cottage
+
+Mein Großvater hat eine kleine Hütte im Norden.
+
+My grandfather has a small cottage in the north.~~~"
+"Die Jungen|||The boys
+
+Die Jungen sind im Garten und spielen Fußball.
+
+The boys are in the garden playing football.~~~"
+"Die Jungs|||The boys
+
+Ich denke, dass die Jungs noch Fußball schauen.
+
+I think the boys are still watching soccer.~~~"
+"Die Karte|||The map
+
+Er sieht auf der Karte, wo sie sind.
+
+He sees on the map where they are.~~~"
+"Die Kerle|||The guys
+
+Diese Kerle kommen mir irgendwie bekannt vor.
+
+Somehow, these guys look familiar to me.~~~"
+"Die Kiste|||The box
+
+Ich frage mich, was wohl in der Kiste ist.
+
+I ask myself what might be in that box.~~~"
+"Die Klappe|||The flap
+
+Meine Katzen kommen durch diese Klappe ins Haus.
+
+My cats enter the house through this flap.~~~"
+"Die Kraft|||The force
+
+Kraft allein hilft uns hier nicht weiter.
+
+Force alone won’t get us anywhere here.~~~"
+"Die Krankheit|||The disease
+
+Bitte wasch dir die Hände, denn diese Krankheit ist ansteckend.
+
+Please wash your hands because this disease is contagious.~~~"
+"Die Kugel|||The ball
+
+Die Kugel landet entweder auf Rot oder Schwarz.
+
+The ball will either land on red or black.~~~"
+"Die Lage|||The location
+
+Die Lage des Hauses ist perfekt!
+
+The location of the house is perfect!~~~"
+"Die Leiche|||The corpse
+
+Im See wurde eine Leiche gefunden.
+
+A corpse was found in the lake.~~~"
+"Die Leitung|||The line
+
+Die Leitung hier auf dem Dorf ist ziemlich schlecht.
+
+The line here in the village is pretty bad.~~~"
+"Die Linie|||The line
+
+Diese Linie fährt ans andere Ende der Stadt.
+
+This line goes to the other end of the city.~~~"
+"Die Lippe|||The lip
+
+Seine Lippe ist nach dem Kampf geschwollen.
+
+His lip is swollen after the fight.~~~"
+"Die Lösung|||The solution
+
+Die beste Lösung ist, noch einmal von vorne zu beginnen.
+
+The best solution is to start again from the beginning.~~~"
+"Die Luke|||The hatch
+
+Er macht die Luke auf dem Schiff auf.
+
+He opens the hatch on the boat.~~~"
+"Die Lust|||The lust
+
+Man sollte sich nicht von seiner Lust steuern lassen.
+
+One should not be controlled by one’s lust.~~~"
+"Die Macht|||The power
+
+Ein einzelner Mensch sollte nicht zu viel Macht haben.
+
+One single person should not have too much power.~~~"
+"Die Majestät|||The majesty
+
+Wenn seine Majestät kommt, musst du dich verbeugen.
+
+When his majesty comes you have to bow.~~~"
+"Die Meile|||The mile
+
+Es ist noch eine Meile bis zum Hotel.
+
+It’s one more mile to the hotel.~~~"
+"Die Menge|||The amount
+
+Diese Menge Mehl sollte reichen.
+
+This amount of flour should be enough.~~~"
+"Die Menschheit|||The humanity
+
+Manchmal glaube ich, dass die Menschheit immer dümmer wird.
+
+Sometimes I think that humanity is getting more and more stupid.~~~"
+"Die Mitte|||The center
+
+Wir sollten die Pflanze in die Mitte des Raumes stellen.
+
+We should put the plant in the center of the room.~~~"
+"Die Nachricht|||The message
+
+Ich habe dir eine Nachricht geschickt.
+
+I sent you a message.~~~"
+"Die Nähe|||The proximity
+
+Es ist in nächster Nähe.
+
+It is in close proximity.~~~"
+"Die Neuigkeit|||The news
+
+Das ist ja eine tolle Neuigkeit!
+
+That is really great news!~~~"
+"Die Ordnung|||The order
+
+Dein Benehmen gestern war nicht in Ordnung.
+
+Your behavior yesterday was not in order.~~~"
+"Die Pause|||The break
+
+Ich brauche unbedingt eine Pause.
+
+I really need a break.~~~"
+"Die Pflicht|||The duty
+
+Es ist meine Pflicht, die Türen jeden Abend abzuschließen.
+
+It is my duty to lock the doors every evening.~~~"
+"Die Presse|||The press
+
+Die Presse ist nicht immer an der Wahrheit interessiert.
+
+The press isn’t always interested in the truth.~~~"
+"Die Prinzessin|||The princess
+
+Die Prinzessin lebte mit ihren Eltern in einem Schloss.
+
+The princess lived in a castle with her parents.~~~"
+"Die Probe|||The sample
+
+Er würde gerne eine Probe des Materials im Labor testen.
+
+He would like to test a sample of the material in the laboratory.~~~"
+"Die Rache|||The revenge
+
+Rache ist etwas, von dem man absehen sollte.
+
+Revenge is something one should not consider.~~~"
+"Die Rakete|||The rocket
+
+Die Rakete wird in wenigen Sekunden abfliegen.
+
+The rocket will take off in a few seconds.~~~"
+"Die Rechnung|||The check
+
+Könnten wir bitte die Rechnung haben?
+
+Could we please get the cheek?~~~"
+"Die Rechte|||The rights
+
+Ich werde Ihnen jetzt Ihre Rechte vorlesen.
+
+I will now read your rights to you.~~~"
+"Die Rede|||The speech
+
+Seine Rede hat uns alle sehr inspiriert.
+
+His speech was very inspiring.~~~"
+"Die Regierung|||The government
+
+Die Regierung wird nichts dagegen unternehmen.
+
+The government won’t do anything about it.~~~"
+"Die Reichen|||The rich
+
+Die Reichen müssen sich keine Sorgen über Geld machen.
+
+The rich don’t have to worry about money.~~~"
+"Die Reihe|||The series
+
+Diese Reihe an Fotos ist wirklich sehr kreativ.
+
+This series of photographs is really very creative.~~~"
+"Die Reise|||The journey
+
+Morgen beginnen sie ihre Reise nach Afrika.
+
+Tomorrow they will start their journey to Africa.~~~"
+"Die Richtung|||The direction
+
+Wir gehen in die falsche Richtung.
+
+We are going in the wrong direction.~~~"
+"Die Rolle|||The role
+
+Deine Rolle ist es, die Gäste zu begrüßen.
+
+Your role is to greet the guests.~~~"
+"Die Ruhe|||The quiet
+
+Die Ruhe in den Bergen ist entspannend.
+
+The quiet in the mountains is relaxing.~~~"
+"Die Runde|||The round
+
+Die nächste Runde geht auf mich!
+
+The next round is on me!~~~"
+"Die Sache|||The thing
+
+Es gibt noch eine Sache, die ich erledigen muss.
+
+There is one more thing that I need to do.~~~"
+"Die Schande|||The shame
+
+Es ist eine Schande, dass du dich nicht benehmen kannst.
+
+It is a shame that you cannot behave yourself.~~~"
+"Die Schlampe|||The bitch
+
+Ich will diese Schlampe nie wiedersehen!
+
+I never want to see that bitch again!~~~"
+"Die Schnauze|||The snout
+
+Seine Schnauze ist vom Schnee ganz weiß.
+
+His snout is all white from the snow.~~~"
+"Die Schönheit|||The beauty
+
+Schönheit liegt im Auge des Betrachters.
+
+Beauty lies in the eye of the beholder.~~~"
+"Die Schulden|||The debt
+
+Er weiß nicht, wie er seine Schulden bezahlen soll.
+
+He doesn’t know how to pay off his debt.~~~"
+"Die Schwierigkeit|||The difficulty
+
+Die Schwierigkeit ist, in solchen Situationen ruhig zu bleiben.
+
+The difficulty is to stay calm in situations like this.~~~"
+"Die Seele|||The soul
+
+Jedes Lebewesen hat eine Seele.
+
+Every living being has a soul.~~~"
+"Die Seite|||The page
+
+Die Telefonnummer steht auf der nächsten Seite.
+
+The telephone number is on the next page.~~~"
+"Die Sicherheit|||The security
+
+Ihre Sicherheit ist unsere Priorität.
+
+Your security is our priority.~~~"
+"Die Sorge|||The concern
+
+Meine einzige Sorge ist, dass es zu spät sein könnte.
+
+My only concern is that it could be too late.~~~"
+"Die Spur|||The track
+
+Auf dem Boden gibt es eine Spur.
+
+There is a track on the ground.~~~"
+"Die Stelle|||The location
+
+Diese Stelle ist perfekt zum Zelten.
+
+This location is perfect for camping.~~~"
+"Die Sünde|||The sin
+
+Es ist eine Sünde, auf andere eifersüchtig zu sein.
+
+It is a sin to be jealous of others.~~~"
+"Die Süße|||The sweetness
+
+Die Süße des Kuchens ist perfekt – nicht zu viel und nicht zu wenig!
+
+The sweetness of this cake is perfect – not too much and not too little!~~~"
+"Die Tasche|||The pocket
+
+Diese Jacke hat keine Tasche.
+
+This jacket does not have a pocket.~~~"
+"Die Tat|||The deed
+
+Sie bereut ihre Tat.
+
+She regrets her deed.~~~"
+"Die Tatsache|||The fact
+
+Es ist eine Tatsache, dass du nie Zeit für mich hast.
+
+It is a fact that you never have time for me.~~~"
+"Die Tiefe|||The depth
+
+In der Tiefe des Meeres leben seltsame Tiere.
+
+Strange animals live in the depth of the sea.~~~"
+"Die Truppen|||The troops
+
+Bald werden die Truppen die Station verlassen.
+
+The troops will soon be leaving the station.~~~"
+"Die Übersetzung|||The translation
+
+Ohne Übersetzung kann ich diesen Text nicht verstehen.
+
+I cannot understand this text without a translation.~~~"
+"Die Uhr|||The clock
+
+Diese Uhr scheint nicht zu funktionieren.
+
+This clock does not seem to work.~~~"
+"Die Unterstützung|||The support
+
+Ich brauche dringend etwas Unterstützung.
+
+I urgently need some support.~~~"
+"Die Untersuchung|||The check-up or examination or investigation or study
+
+Die Untersuchung hat gezeigt, dass ich gesund bin.
+The check-up has shown that I am healthy.
+
+Der Arzt hat eine gründliche Untersuchung durchgeführt.
+The doctor conducted a thorough examination.
+
+Sie geht morgen zur Untersuchung ins Krankenhaus.
+She is going to the hospital for a check-up tomorrow.
+
+Die Polizei führt eine Untersuchung des Tatorts durch.
+The police are conducting an investigation of the crime scene.
+
+Die Untersuchung ergab neue Erkenntnisse.
+The investigation revealed new findings.
+
+Die Untersuchung zeigt, dass Sport gesund ist.
+The study shows that exercise is healthy.
+
+Wir führen eine Untersuchung zur Kundenzufriedenheit durch.
+We are conducting a survey/study on customer satisfaction.
+
+
+
+~~~"
+"Die Verantwortung|||The responsibility
+
+Es ist unsere Verantwortung, dass hier alles funktioniert.
+
+It is our responsibility to make sure everything works here.~~~"
+"Die Verbindung|||The connection
+
+Die Verbindung ist heute sehr schlecht.
+
+Today the connection is really bad.~~~"
+"Die Vergangenheit|||The past
+
+Man kann die Vergangenheit nicht ändern.
+
+One cannot change the past.~~~"
+"Die Verzeihung|||The forgiveness
+
+Er hat mich um Verzeihung gebeten.
+
+He asked for my forgiveness.~~~"
+"Die Vorsicht|||The caution
+
+Hier muss man mit Vorsicht voranschreiten.
+
+You have to proceed with caution here.~~~"
+"Die Vorstellung|||The idea
+
+Mir gefällt die Vorstellung, einfach nichts zu tun!
+
+I like the idea of simply doing nothing!~~~"
+"Die Wache|||The guard
+
+Die Wache hat keine verdächtigen Personen gesehen.
+
+The guard has not seen any suspicious people.~~~"
+"Die Wahl|||The choice
+
+Möchtest du Vanille oder Schokolade? Du hast die Wahl!
+
+Would you like vanilla or chocolate? It’s your choice!~~~"
+"Die Wahrheit|||The truth
+
+Es ist immer besser, die Wahrheit zu sagen.
+
+It is always better to tell the truth.~~~"
+"Die Weile|||The while
+
+Wir werden noch eine ganze Weile hier sein.
+
+We will be here for quite a while.~~~"
+"Die Weisen|||The wise
+
+Die Weisen reden nicht viel, sondern hören lieber zu.
+
+The wise don’t talk much but instead prefer to listen.~~~"
+"Die Wohnung|||The apartment
+
+Die Wohnung hat einen tollen Ausblick!
+
+The apartment has a great view!~~~"
+"Die Würde|||The dignity
+
+Jeder Mensch sollte mit Würde behandelt werden.
+
+Every person should be treated with dignity.~~~"
+"Die Zahl|||The number
+
+Die Zahl der Verkehrsunfälle ist letztes Jahr stark gesunken.
+
+The number of traffic accidents has gone back drastically last year.~~~"
+"Die Zelle|||The cell
+
+Unter dem Mikoskop kann man sehen, wie die Zelle sich verändert.
+
+Under the microscope you can see how the cell is changing.~~~"
+"Die Zukunft|||The future
+
+Wir wissen nicht, was in der Zukuft passieren wird.
+
+We don’t know what will happen in the future.~~~"
+"Die Zunge|||The tongue
+
+Seine Zunge ist rosa und sieht gesund aus.
+
+His tongue is pink and looks healthy.~~~"
+"Dienen|||To serve
+
+Ich werde dir und deiner Familie immer dienen.
+
+I will always serve you and your family.~~~"
+"Diese|||These
+
+Man kann diese Bananen nicht mehr essen.
+
+One cannot eat these bananas anymore.~~~"
+"Doch|||But
+
+Wir wollten heute wandern gehen, doch das Wetter ist zu schlecht.
+
+We wanted to go hiking today, but the weather is too bad.~~~"
+"Dorthin|||There
+
+Wir sollten das Sofa dorthin stellen.
+
+We should put the sofa over there.~~~"
+"Drauf|||On it
+
+Da ist schon Butter drauf.
+
+There’s already butter on it.~~~"
+"Draußen|||Outside
+
+Die Hunde sind draußen im Garten.
+
+The dogs are outside in the garden.~~~"
+"Dreckig|||Dirty
+
+Bitte geh dir die Hände waschen, sie sind so dreckig!
+
+Please go and wash your hands, they are so dirty!~~~"
+"Dreh|||Twist (Imperative)
+
+Dreh es!
+
+Twist it!~~~"
+"Drehen|||To turn
+
+Du musst diesen Knopf drehen.
+
+You have to turn this button.~~~"
+"Drin|||In it
+
+Die Batterie ist schon drin.
+
+The battery is already in it.~~~"
+"Dringend|||Urgently
+
+Ich muss dringend mit Dr. Schmidt sprechen!
+
+I urgently have to speak with Dr. Schmidt!~~~"
+"Drinnen|||Inside
+
+Die Kinder spielen drinnen, weil es regnet.
+
+The children are playing inside because it is raining.~~~"
+"Drüben|||Over there
+
+Dein Sohn wartet dort drüben auf dich.
+
+Your son is waiting for you over there.~~~"
+"Drüber|||Over it
+
+Der Vogel kann einfach drüber fliegen.
+
+The bird can simply fly over it.~~~"
+"Drücken|||To push
+
+Du musst fest drücken, um die Tür zu öffnen.
+
+You have to push hard to open the door.~~~"
+"Durch|||By
+
+Durch das Lernen einer neuen Sprache erweitert man seinen Horizont.
+
+By learning a new language, you can widen your horizon.~~~"
+"Durcheinander|||Mixed up or Confused
+
+Ich bin heute ganz durcheinander.
+
+I am really confused today.~~~"
+"Eben|||Just
+
+Ich habe ihn eben angerufen.
+
+I just called him.~~~"
+"Ebenso|||As well or likewise or equally
+
+Danke für Ihre Hilfe! – Ebenso!
+Thank you for your help! – Likewise!
+
+Er ist freundlich, und seine Schwester ebenso.
+He is friendly, and his sister is as well.
+
+Ich wünsche dir einen schönen Tag! – Ebenso!
+I wish you a nice day! – Same to you!
+
+Die neuen Regeln gelten für Studenten ebenso wie für Lehrer.
+The new rules apply to students as well as to teachers.~~~"
+"Echt|||Real
+
+Ist dieses Gemälde echt?
+
+Is this painting real?~~~"
+"Egal|||All the same
+
+Es ist mir egal, wann wir losfahren.
+
+It’s all the same to me at what time we are leaving.~~~"
+"Eher|||Rather
+
+Er würde eher zu Hause bleiben, als nach Hamburg zu fahren.
+
+He would rather stay at home than go to Hamburg.~~~"
+"Ehrlich|||Honest
+
+Vor Gericht muss man ehrlich sein.
+
+At court one has to be honest.~~~"
+"Eifersüchtig|||Jealous
+
+Er ist eifersüchtig, wenn sie mit einem anderen Mann redet.
+
+He is jealous when she talks to another man.~~~"
+"Eigene|||Own (Feminine)
+
+Das hier ist meine eigene Kreation.
+
+This here is my own creation.~~~"
+"Eigentlich|||Actually
+
+Ich würde gerne ausgehen, aber eigentlich bin ich sehr müde.
+
+I would like to go out, but I am actually very tired.~~~"
+"Ein anderer|||Someone else
+
+Kann bitte ein anderer diese Arbeit machen?
+
+Can someone else please do this work?~~~"
+"Ein bisschen|||A little
+
+Um erlich zu sein, habe ich vor Höhen ein bisschen Angst.
+
+To be honest I am a little scared of heights.~~~"
+"Einander|||Each other
+
+Sie haben einander schon einmal getroffen.
+
+They have met each other once before.~~~"
+"Einem|||An
+
+Der Zahnarzt füllte meinen Zahn mit einem Inlay.
+
+The dentist filled my tooth with an inlay.~~~"
+"Einen|||A/An (Masculine)
+
+Hast du einen Moment Zeit?
+
+Have you got time for a moment?~~~"
+"Einfach|||Easy
+
+Es ist einfach, dieses Handy zu bedienen.
+
+It is easy to operate this cell phone.~~~"
+"Einfacher|||Easier
+
+Es ist einfacher, nichts zu sagen.
+
+It is easier to say nothing.~~~"
+"Eingeladen|||Invited
+
+Du bist herzlich zu meiner Feier am Sonntag eingeladen.
+
+You are cordially invited to my party on Sunday.~~~"
+"Einig|||Agreed
+
+Wir sind uns einig, dass das Haus verkauft werden soll.
+
+We agreed that the house should be sold.~~~"
+"Einige|||Some
+
+Einige Mitarbeiter sind hier nicht glücklich.
+
+Some employees (or co-workers) aren’t happy here.~~~"
+"Einigen|||Some
+
+Dieser Lärm ist einigen Leuten zu viel und deshalb wollen sie gehen.
+
+The noise is too much for some people and that is why they want to leave.~~~"
+"Einladen|||invite
+
+Wir sollten Thomas zur Party einladen.
+
+We should invite Thomas to the party.~~~"
+"Einmal|||One time
+
+Wir sind einmal in den Schweizer Bergen wandern gegangen und es hat uns sehr gut gefallen!
+
+We went hiking in the Swiss mountains one time and we really liked it a lot!~~~"
+"Einsam|||Lonely
+
+Seit seine Frau ihn verlassen hat, fühlt er sich einsam.
+
+Since his wife has left him, he feels very lonely.~~~"
+"Einstecken|||To plug in
+
+Du kannst den Computer dort einstecken.
+
+You can plug in your computer there.~~~"
+"Einverstanden|||Agreed
+
+Ich war mit diesem Vertrag noch nie einverstanden!
+
+I never agreed to this contract!~~~"
+"Einzeln|||Individually
+
+Ich werde jetzt mit jedem von euch einzeln sprechen.
+
+I will now speak to every one of you individually.~~~"
+"Einzige|||Only
+
+Das ist der einzige Pullover, den ich habe.
+
+This is the only pullover I have.~~~"
+"Empfangen|||To receive
+
+Wir werden dich am Flughafen empfangen.
+
+We will receive you at the airport.~~~"
+"Empfinden|||To feel
+
+Ich kann momentan nur Trauer und Schmerz empfinden.
+
+At the moment I can only feel sadness and pain.~~~"
+"Enden|||To end up
+
+Wenn du so weitermachst, wirst du im Krankenhaus enden.
+
+If you continue like this, you will end up in hospital.~~~"
+"Endlich|||At last
+
+Endlich ist Wochenende!
+
+It’s the weekend at last!~~~"
+"Eng|||Narrow
+
+Dieser Gang ist ziemlich eng.
+
+This corridor is pretty narrow.~~~"
+"Entdeckt|||Discovered
+
+Kolumbus hat angeblich Amerika entdeckt.
+
+Apparently, Columbus discovered America.~~~"
+"Entfernen|||To remove
+
+Wir müssen den Tumor entfernen, bevor er größer wird.
+
+We have to remove the tumor before it gets any bigger.~~~"
+"Entfernt|||Away
+
+Meine Eltern wohnen sehr weit von hier entfernt.
+
+My parents live very far away from here.~~~"
+"Entkommen|||To escape
+
+Jedes Jahr entkommen zahlreiche Häftlinge aus dem Gefängnis.
+
+Every year numerous prisoners escape from jail.~~~"
+"Entlang|||Along
+
+Sie gingen am Fluss entlang.
+
+They walked along the river.~~~"
+"Entlassen|||To lay off
+
+Sie werden ihn am Ende des Monats entlassen.
+
+They will lay him off at the end of the month.~~~"
+"Entscheiden|||To decide
+
+Heute Abend müssen wir uns entscheiden.
+
+This evening we will have to decide.~~~"
+"Entschieden|||Decided
+
+Gestern haben wir uns entschieden, zu heiraten.
+
+Yesterday we decided to get married.~~~"
+"Entschuldigen|||To apologize
+
+Ich möchte mich bei dir entschuldigen.
+
+I would like to apologize to you.~~~"
+"Entspannen|||To relax
+
+Hier kann man sich wirklich herrlich entspannen!
+
+One can really relax beautifully here!~~~"
+"Erfahren|||To find out
+
+Wann werden wir die Ergebnisse erfahren?
+
+When will we find out (or learn or experience) the results?~~~"
+"Erfolgreich|||Successfully
+
+Wir haben das Projekt erfolgreich beendet!
+
+We have successfully completed the project!~~~"
+"Ergeben|||To yield
+
+Die Truppen unseres Feindes werden sich ergeben.
+
+The troops of our enemy will yield.~~~"
+"Erhalten|||To obtain
+
+Er wird heute sein Visum erhalten.
+
+He will obtain his visa today.~~~"
+"Erinnert|||Reminds
+
+Er erinnert micht daran, was noch alles getan werden muss.
+
+He reminds me of what still needs to be done.~~~"
+"Erkannt|||Recognized
+
+Ich habe dich mit dieser neuen Haarfarbe nicht erkannt!
+
+I haven’t recognized you with this new hair color!~~~"
+"Erkennen|||To recognize
+
+Er kann seine Enkelkinder nicht mehr erkennen.
+
+He cannot recognize his grandchildren any more.~~~"
+"Erklären|||To explain
+
+Ich kann nicht erkären, was ich gesehen haben.
+
+I cannot explain what I saw.~~~"
+"Erklärt|||Explained
+
+Heute Morgen wurde Herr Schmidt zum neuen Bürgermeister erklärt
+
+This morning Mr. Schmidt was declared the new mayor.~~~"
+"Erlauben|||To allow
+
+Er wird seinem Sohn nicht erlauben, in die Stadt zu gehen.
+
+He will not allow his son to go into town.~~~"
+"Erleben|||To experience
+
+Ich möchte viele schöne Abenteuer mit dir erleben.
+
+I want to experience many nice adventures with you.~~~"
+"Erledigen|||To handle
+
+Ich werde das für dich erledigen.
+
+I will handle that for you.~~~"
+"Erledigt|||Done
+
+Wir haben alle unsere Aufgaben erledigt.
+
+We have done all our exercises.~~~"
+"Ernsthaft|||Seriously
+
+Willst du mir ernsthaft sagen, dass du jetzt gehst?
+
+Are you seriously telling me that you are leaving now?~~~"
+"Erreichen|||To reach
+
+Bald werden wir das Ziel erreichen.
+
+Soon we will reach the finish line.~~~"
+"Erreicht|||Achieved
+
+Endlich haben wir mit unserem Produkt Erfolg erreicht!
+
+Finally, we have achieved success with our product!~~~"
+"Erschaffen|||To create
+
+Er kann mit seinen Händen wahre Kunstwerke erschaffen!
+He can create real pieces of art with his hands!
+
+Du wirst ein echtes Meisterwerk erschaffen!
+You will create a real masterwork!~~~"
+"Erscheinen|||To appear
+
+Jeden Abend erscheinen hier zwei Männer im Anzug.
+
+Every evening two men in suits appear here.~~~"
+"Erschießen|||To shoot dead
+
+Der Polizist musste einen Mann erschießen.
+
+The policeman had to shoot a man dead.~~~"
+"Erschossen|||Shot dead
+
+Gestern wurde ein Mann im Wald erschossen.
+
+Yesterday a man was shot dead in the woods.~~~"
+"Erst|||Only
+
+Er kann noch nicht gehen – er ist erst drei Monate alt!
+
+He can’t walk yet – he is only three months old!~~~"
+"Erstaunlich|||Amazing
+
+Es ist erstaunlich, wie viele Leute zwei Sprachen sprechen können.
+
+It is amazing how many people can speak two languages.~~~"
+"Ertragen|||To bear
+
+Ich kann es nicht ertragen, dich so unglücklich zu sehen.
+
+I cannot bear to see you this unhappy.~~~"
+"Erwachsen|||Grown
+
+Die Kinder sind ja schon alle erwachsen!
+
+The children are all grown-up!~~~"
+"Erwähnen|||To mention
+
+Du solltest dieses Thema auf keinen Fall erwähnen.
+
+Under no circumstances should you mention this topic.~~~"
+"Erwähnt|||Mentioned
+
+Du hast schon erwähnt, dass du morgen keine Zeit hast.
+
+You already mentioned that you don’t have time tomorrow.~~~"
+"Erwarten|||To expect
+
+Ich weiß nicht, was ich von dir erwarten kann.
+
+I don’t know what I can expect from you.~~~"
+"Erwartet|||Expected
+
+Er hat zu viel von ihr erwartet.
+
+He expected too much of her.~~~"
+"Erwischen|||To catch
+
+Die Polizei wird den Mörder bestimmt erwischen.
+
+The police will surely catch the murderer.~~~"
+"Erwischt|||Caught
+
+Sie haben den Täter nun endlich erwischt.
+
+They have finally caught the perpetrator.~~~"
+"Erzähl|||Tell (Imperative)
+
+Erzähl mir eine Geschichte!
+
+Tell me a story!~~~"
+"Erzählen|||To tell
+
+Er würde dir gerne mehr über seine Vergangenheit erzählen.
+
+He would like to tell you more about his past.~~~"
+"Erzählt|||Told
+
+Habe ich dir schon von meinem Abenteuer erzählt?
+
+Have I already told you about my adventure?~~~"
+"Es gibt|||There is/There are
+
+Es gibt viele Läden in unserer Stadt.
+
+There are many shops in our city.~~~"
+"Etwa|||About
+
+Wir sind in etwa einer Stunde da.
+
+We will be there in about an hour.~~~"
+"Etwas|||Something
+
+Etwas stimmt hier nicht.
+Something isn’t right here.
+
+Alexander, kannst du mir bitte mit etwas helfen?
+Alexander, can you please help me with something?~~~"
+"Ewig|||Forever
+
+Wir werden nicht ewig leben.
+
+We won’t live forever.~~~"
+"Existiert|||Exists
+
+Er ist sich sicher, dass Gott existiert.
+
+He is certain that god exists.~~~"
+"Fahr|||Drive (Imperative)
+
+Fahr vorsichtig!
+
+Drive safely!~~~"
+"Fahren|||To go
+
+Im Sommer werden wir nach Italien fahren!
+
+In the summer we will go to Italy!~~~"
+"Fallen|||To fall
+
+Wenn du nicht aufpasst, wirst du fallen.
+
+If you’re not careful you will fall.~~~"
+"Fällen|||To make (A decision)
+
+Heute Mittag müssen wir eine wichtige Entscheidung fällen.
+
+This afternoon we have to make an important decision.~~~"
+"Falls|||In case
+
+Ruf mich an, falls du auch kommen möchtest.
+
+Call me in case you also want to come.~~~"
+"Falsch|||Wrong
+
+Ich glaube, dass das falsch ist.
+
+I believe that this is wrong.~~~"
+"Fangen|||To catch
+
+Kannst du den Ball fangen?
+
+Can you catch the ball?~~~"
+"Fassen|||To hold
+
+Dieses Glas kann einen ganzen Liter fassen.
+
+This glass can hold an entire liter.~~~"
+"Fehlen|||To miss or lack or the absence
+
+Uns fehlt das Verständnis für sie.
+
+We lack understanding for her.~~~"
+"Feiern|||To celebrate
+
+Am Wochenende werden wir deinen Geburtstag feiern!
+
+On the weekend we will celebrate your birthday!~~~"
+"Fern|||Remote
+
+Diese Insel liegt sehr fern.
+
+This island is very remote.~~~"
+"Fertigen|||To manufacture
+
+In dieser Fabrik fertigen die Arbeiter Uhren.
+
+In this factory the employees manufacture watches.~~~"
+"Festhalten|||To hold on
+
+Es ist ziemlich stürmisch heute, du solltest dich an etwas festhalten.
+
+It is pretty windy today, you should hold on to something.~~~"
+"Feuern|||To fire
+
+Wenn er so weitermacht, werde ich ihn feuern.
+
+If he continues like this I will fire him.~~~"
+"Fliehen|||To flee
+
+Während dem Krieg fliehen viele Leute aus dem Land.
+
+During the war many people flee the country.~~~"
+"Fordern|||To demand
+
+Er muss von seinen Arbeitern mehr Leistung fordern.
+
+He has to demand more effort from his employees.~~~"
+"Fort|||Away
+
+Am Morgen ging er fort.
+
+He went away in the morning.~~~"
+"Fremd|||Foreign
+
+Er fühlt sich in der neuen Stadt alleine und fremd.
+
+He feels lonely and foreign in the new city.~~~"
+"Freuen|||To look forward to
+
+Du kannst dich auf einen tollen Tag am Strand freuen!
+
+You can look forward to a great day at the beach!~~~"
+"Froh|||Glad to
+
+Ich bin so froh, dich zu sehen!
+
+I am so glad (or happy or pleased) to see you!~~~"
+"Führen|||To lead
+
+Johannes wird uns durch den Wald führen.
+
+Johannes will lead us through the forest.~~~"
+"Funktionieren|||To work/To function
+
+Kannst du mir erklären, wie diese Maschinen funktionieren?
+
+Can you explain to me how these machines work?~~~"
+"Funktioniert|||Worked
+
+Der Trick hat funktioniert!
+
+The trick worked!~~~"
+"Furchtbar|||Terribly
+
+Es tut mir furchtbar leid, dass ich zu spät gekommen bin.
+
+I am terribly sorry that I arrived late.~~~"
+"Fürchten|||To fear
+
+Viele Kinder fürchten sich vor der Dunkelheit.
+
+Many children fear the darkness.~~~"
+"Fürs|||For
+
+Ich danke dir fürs Helfen.
+
+I thank you for helping.~~~"
+"Ganz|||All
+
+Ich habe den Kaffee ganz ausgetrunken.
+
+I drank all the coffee.~~~"
+"Geändert|||Changed
+
+Leider hat sich die Lage in den letzten Stunden drastisch geändert.
+
+Unfortunately, the situation has changed drastically over the last few hours.~~~"
+"Gebären|||To give birth
+
+Im Frühling gebären viele Tiere ihre Jungen.
+
+In springtime many animals give birth to their young.~~~"
+"Gebaut|||Built
+
+In London haben sie schon wieder eine neue Straße gebaut.
+
+They built yet another new street in London.~~~"
+"Gebeten|||Asked
+
+Johannes hat mich gebeten, ihm bei etwas zu helfen.
+
+Johannes has asked me to help him with something.~~~"
+"Geblieben|||Remained
+
+Sie ist während des ganzen Films ruhig geblieben.
+
+She remained quiet for the entire film.~~~"
+"Gebracht|||Brought
+
+Sie hat ihm Suppe gebracht.
+
+She has brought him soup.~~~"
+"Gebrauchen|||To use
+
+Ihr könntet etwas Hilfe im Büro gebrauchen.
+
+You could use some help in the office.~~~"
+"Gebraucht|||Used or second-hand
+
+Ich habe ein gebrauchtes Auto gekauft.
+I bought a used car.
+
+Gebrauchte Kleidung ist oft günstiger.
+Used clothing is often cheaper.
+
+Dieses Buch ist schon gebraucht.
+This book is already used.
+
+Das Werkzeug wurde oft gebraucht.
+The tool was used often.
+
+Diese Methode wird in der Praxis häufig gebraucht.
+This method is frequently used in practice.~~~"
+"Gedacht|||Thought
+
+Das hätte ich nie von ihm gedacht!
+
+I never would have thought that of him!~~~"
+"Gefahren|||Driven
+
+Wir sind die ganze Nacht gefahren, um bei dir sein zu können.
+
+We have driven all night in order to be with you.~~~"
+"Gefährlich|||Dangerous
+
+Es ist gefährlich, mit Feuer zu spielen.
+
+It is dangerous to play with fire.~~~"
+"Gefällt|||Like
+
+Mir gefällt dieses Gemälde sehr.
+
+I really like this painting.~~~"
+"Gefangen|||Captured
+
+Gestern haben wir einen Vogel gefangen.
+
+Yesterday we captured a bird.~~~"
+"Gefeuert|||Fired
+
+Er wurde wegen seiner schlechten Arbeit gefeuert.
+
+He was fired because of his bad work.~~~"
+"Gefragt|||In demand
+
+Dieses Videospiel ist sehr gefragt.
+
+This video game is high in demand.~~~"
+"Gegangen|||Gone
+
+Sie ist schon nach Hause gegangen.
+
+She has already gone home.~~~"
+"Gegeben|||Given
+
+Er hat uns seine Dokumente gegeben.
+
+He has given us his documents.~~~"
+"Gegenseitig|||Mutually
+
+Sie respektieren sich gegenseitig.
+
+They mutually respect each other.~~~"
+"Gegenüber|||Opposite
+
+Die Bank ist gegenüber der Kirche.
+
+The bank is opposite the church.~~~"
+"Geglaubt|||Believed
+
+Ich habe ihm jedes Wort geglaubt.
+
+I believed him every word.~~~"
+"Gehabt|||Had
+
+Er hat noch noch einen Streit mit seiner Freundin gehabt.
+
+He has ever had an argument with his girlfriend.~~~"
+"Gehalten|||Held
+
+Heute hat er zum ersten Mal seinen Sohn in den Armen gehalten.
+
+Today he held his son in his arms for the first time.~~~"
+"Geheim|||Secret
+
+Diese Informationen sind streng geheim.
+
+This information is top secret.~~~"
+"Geholfen|||Helped
+
+Sarah hat uns gestern wirklich sehr geholfen.
+
+Sarah really helped us a lot yesterday.~~~"
+"Gehören|||To belong to
+
+Gehören diese Schuhe dir?
+
+Do these shoes belong to you?~~~"
+"Gehört|||Heard
+
+Hast du die Nachrichten gehört?
+
+Have you heard the news?~~~"
+"Geklaut|||Stolen
+
+Jemand hat mein Fahrrad geklaut!
+
+Someone has stolen my bike!~~~"
+"Gekommen|||Came
+
+Meine Freundin aus Berlin ist gekommen.
+
+My friend from Berlin came.~~~"
+"Gelassen|||Calm
+
+Es ist schön, dich so gelassen zu sehen.
+
+It is nice seeing you so calm.~~~"
+"Gelaufen|||Run
+
+Wir sind heute Morgen schon 10 km gelaufen.
+
+We have already run 10 km this morning.~~~"
+"Geliebte|||Beloved (Feminine)
+
+Das hier ist unsere geliebte Katze Mimi.
+
+This is our beloved cat Mimi.~~~"
+"Gelogen|||Lied
+
+Ich kann nicht glauben, dass du gelogen hast.
+
+I can’t believe you lied.~~~"
+"Gelten|||To apply to
+
+Diese Regeln gelten für alle Mitarbeiter.
+
+These rules apply to all employees.~~~"
+"Gemein|||Common
+
+Alle Vögel haben diese Eigenschaften gemein.
+
+All birds have these traits in common.~~~"
+"Gemeinsam|||Together
+
+Wenn wir gemeinsam arbeiten, können wir es schaffen.
+
+We can do it if we work together.~~~"
+"Gemeint|||Meant
+
+Er hat es sicher nicht so gemeint!
+
+He surely hasn’t meant it like that!~~~"
+"Genannt|||Called
+
+Sie haben ihn immer bei seinem Spitznamen genannt.
+
+They always called him by his nickname.~~~"
+"Genauso|||Just as
+
+Du bist genauso stur wie ich.
+
+You’re just as stubborn as I am.~~~"
+"Genießen|||To enjoy
+
+Wir genießen diese Kreuzfahrt voll und ganz.
+
+We enjoy this cruise to the fullest.~~~"
+"Genommen|||Taken
+
+Ich habe dein Auto genommen.
+
+I’ve taken your car.~~~"
+"Geplant|||Planned
+
+Wir haben noch keine Aktivitäten für morgen geplant.
+
+We haven’t planned any activities for tomorrow yet.~~~"
+"Geraten|||Guessed
+
+Ich wusste die Antwort nicht, ich habe einfach geraten.
+
+I didn’t know the answer, I simply guessed.~~~"
+"Geredet|||Spoken
+
+Er hat schon lange nicht mehr mit seiner Mutter geredet.
+
+He hasn’t spoken to his mother in a long time.~~~"
+"Gerettet|||Saved
+
+Alle Passagiere wurden gerettet.
+
+All passengers were saved.~~~"
+"Gern|||Gladly
+
+Ich helfe gern anderen Leuten.
+
+I gladly help other people.~~~"
+"Gerne|||You're welcome!
+
+-Danke, für deine Hilfe! - Gerne, kein Problem.
+
+-Thank you for your help! - You're welcome!~~~"
+"Geschafft|||Managed
+
+Wir haben es geschafft, das Auto zu reparieren.
+
+We managed to repair the car.~~~"
+"Geschehen|||To happen
+
+Wann ist das alles geschehen?
+
+When did this all happen?~~~"
+"Geschickt|||Cleverly
+
+Das hat er geschickt geregelt!
+
+He arranged that cleverly!~~~"
+"Geschlagen|||Beaten
+
+Es hat seine Frau geschlagen.
+
+He has beaten his wife.~~~"
+"Geschlossen|||Closed
+
+Es tut mir leid, aber die Bar ist seit einer halben Stunde geschlossen.
+
+I am sorry, but the bar closed half an hour ago.~~~"
+"Geschossen|||Shot
+
+Er hat sich selbst in den Fuß geschossen!
+
+He has shot himself in the foot!~~~"
+"Gesehen|||Seen
+
+Am Wochenende haben wir einen tollen Film im Kino gesehen.
+
+On the weekend we have seen a great film at the cinema.~~~"
+"Gesetzt|||Set
+
+Der Lehrer hat ihnen eine unmögliche Aufgabe gesetzt.
+
+The teacher has set them an impossible task.~~~"
+"Gesprochen|||Spoken
+
+Ich habe mit deinem Vater gesprochen.
+
+I have spoken to your father.~~~"
+"Gestellt|||Put
+
+Er hat das Glas auf den Tisch gestellt.
+
+He put the glass on the table.~~~"
+"Gestohlen|||Stolen
+
+Vor ein paar Tagen wurde sein Motorrad gestohlen.
+
+A few days ago, his motorbike was stolen.~~~"
+"Gesucht|||Wanted
+
+In der Stadt wird ein neuer Polizist gesucht – du solltest dich bewerben.
+
+A new policeman is wanted in the city – you should apply.~~~"
+"Getan|||Done
+
+Du bist so komisch heute – habe ich dir etwas getan?
+
+You are very strange today – have I done something to you?~~~"
+"Getötet|||Killed
+
+In diesen Krieg wurden viele Menschen getötet.
+
+Many people were killed in this war.~~~"
+"Getrennt|||Separated
+
+Michael und Anna haben sich letzen Monat getrennt.
+
+Michael and Anna separated last month.~~~"
+"Getroffen|||Met
+
+Wir haben deine Tochter getroffen.
+
+We have met your daughter.~~~"
+"Gewesen|||Been
+
+Ich bin hier noch nie gewesen.
+
+I have never been here.~~~"
+"Gewinnen|||To win
+
+Man kann gewinnen, wenn man ein Ass hat.
+
+You can win if you have an ace.~~~"
+"Gewöhnlich|||Usually
+
+Sie kommt gewöhnlich jeden Sonntag in dieses Cafe.
+
+She usually comes to this café every Sunday.~~~"
+"Geworden|||Become
+
+Er ist ein großer Mann geworden.
+
+He has become a big man.~~~"
+"Gewusst|||Known
+
+Ich habe schon immer gewusst, dass etwas nicht mit ihm stimmt.
+
+I have always known that something isn’t quite right with him.~~~"
+"Gezeigt|||Shown
+
+Er hat mir gezeigt, wie man die besten Steaks macht.
+
+He has shown me how to make the best steaks.~~~"
+"Gezogen|||Moving or Relocating or Pulled or Drawn
+
+Er hat den Wagen gezogen.
+He pulled the cart.
+
+Das Pferd hat den Schlitten gezogen.
+The horse pulled the sleigh.
+
+Ich bin nach Berlin gezogen.
+I moved to Berlin.
+
+Sie ist vor zwei Jahren nach München gezogen.
+She moved to Munich two years ago.
+
+Er hat die Karte gezogen.
+He drew the card.~~~"
+"Gib|||Give (Imperative)
+
+Gib mir den Schlüssel!
+
+Give me the key!~~~"
+"Glaub|||Think (Imperative)
+
+Glaub nicht, dass du damit durchkommst!
+
+Don’t think you’ll get away with this!~~~"
+"Gleich|||Equal
+
+Vor dem Gesetz sind alle gleich.
+
+Everyone is equal in front of the law.~~~"
+"Gleichen|||To resemble
+
+Die beiden gleichen sich sehr.
+
+They both resemble each other.~~~"
+"Glücklich|||Happy
+
+Wir sind in den Bergen sehr glücklich.
+
+We’re very happy in the mountains.~~~"
+"Greifen|||To grab
+
+Er kann den Teller nicht greifen, weil er zu hoch oben ist.
+
+He cannot grab the plate because it is up too high.~~~"
+"Großartig|||Great
+
+Die Ausstellung war wirklich großartig!
+
+The exhibition was really great!~~~"
+"Größer|||Bigger or Greater
+
+Jedes Mal, wenn ich dich sehe, bist du größer!
+
+Every time I see you, you are bigger!~~~"
+"Größte|||Greatest or Biggest
+
+Die größte Herausforderung ist, nichts zu vergessen.
+
+The biggest challenge is not to forget anything.~~~"
+"Gucken|||To watch
+
+Willst du einen Film mit mir gucken?
+
+Do you want to watch a film with me?~~~"
+"Halten|||To hold
+
+Ich muss schnell etwas erledigen; kannst du bitte das Baby halten?
+
+I quickly have to do something; can you please hold the baby?~~~"
+"Handeln|||To act
+
+Wir haben keine Zeit mehr und müssen sofort handeln.
+
+We don’t have any more time and must act immediately.~~~"
+"Hängen|||To hang
+
+Du solltest die Klamotten in den Schrank hängen.
+
+You should hang the clothes into the wardrobe.~~~"
+"Hässlich|||Ugly
+
+Diese Schuhe gefallen mir nicht – sie sind wirklich hässlich.
+
+I don’t like these shoes – they are really ugly.~~~"
+"Hat|||Has
+
+Sie hat wunderschöne blaue Augen.
+
+She has beautiful blue eyes.~~~"
+"Hat gesucht|||Was looking for
+
+König Arthur hat den Heiligen Gral gesucht.
+
+King Arthur was looking for the Holy Grail.~~~"
+"Hauen|||To hit
+
+Er wird ihm ins Gesicht hauen.
+
+He will hit him in the face.~~~"
+"Heben|||To lift
+
+Wir müssen diese Kiste zusammen heben, sie ist sehr schwer.
+
+We have to lift this box together, it is very heavy.~~~"
+"Heilig|||Holy
+
+Den Tempel darf man nicht betreten, denn er ist heilig.
+
+Entering the temple is not permitted because it is holy.~~~"
+"Heißen|||To be called
+
+Viele Leute heißen Michael.
+
+Many people are called Michael.~~~"
+"Her|||Here
+
+Komm doch bitte mal schnell her.
+
+Please come over here quickly.~~~"
+"Heraus|||Out
+
+Du musst aus dem Haus heraus.
+
+You have to get out of the house.~~~"
+"Herausfinden|||To find out
+
+Ich muss herausfinden, wo Sebastian wohnt.
+
+I have to find out where Sebastian lives.~~~"
+"Herauszufinden|||To find out
+
+Wir werden alles tun, um herauszufinden, wer das getan hat.
+
+We will do everything to find out, who did this.~~~"
+"Herein|||To come in
+
+Du kannst herein kommen, die Tür ist offen.
+
+You can come in; the door is open.~~~"
+"Herkommen|||To come here
+
+Kannst du bitte schnell herkommen und mir mit etwas helfen?
+
+Could you quickly come here please and help me with something?~~~"
+"Herren|||Men’s
+
+Diese Toiletten sind für Herren.
+
+This is the Men’s room.~~~"
+"Herum|||Around
+
+Wir müssen um den See herum gehen.
+
+We have to go around the lake.~~~"
+"Herzlich|||Heartfelt or Cordially
+
+Sie hat uns sehr herzlich in ihrem Zuhause begrüßt.
+
+She welcomed us very cordially to her home.~~~"
+"Hierher|||Here
+
+Wir sollten das Sofa hierher stellen.
+
+We should put the sofa here.~~~"
+"Hin|||To
+
+Wie kommen wir zum Bahnhof hin?
+
+How do we get to the train station?~~~"
+"Hinaus|||Out
+
+Du solltest aus dem Haus hinaus gehen und etwas frische Luft schnappen.
+
+You should get out of the house and get some fresh air.~~~"
+"Hinein|||Into
+
+Der Mann geht in das Geschäft hinein.
+
+The man goes into the shop.~~~"
+"Hingehen|||To go there
+
+Wir sollten hingehen und ihm unsere Meinung sagen!
+
+We should go there and tell him our opinion!~~~"
+"Hinten|||Back or Rear
+
+Der Schuppen ist hinten im Garten.
+
+The shed is in the back of the garden.~~~"
+"Hinterlassen|||To leave
+
+Ich werde euch mein Haus und mein Geld hinterlassen, wenn ich sterbe.
+
+When I die, I will leave you my house and my money.~~~"
+"Hol|||Get (Imperative)
+
+Hol mir ein Glas Wasser!
+
+Get me (or fetch me) a glass of water!~~~"
+"Holen|||To get
+
+Warte bitte auf mich, ich muss noch schnell meine Tasche holen.
+
+Please wait for me, I quickly have to go and get my bag.~~~"
+"Hört|||Heard
+
+Ich habe gehört, dass Chicago eine sehr schöne Stadt ist.
+
+I heard that Chicago is a very nice city.~~~"
+"Hübsch|||Pretty
+
+Du siehst heute sehr hübsch aus!
+
+You look very pretty today!~~~"
+"Ich habe nicht|||I haven‘t
+
+Ich habe schon lange nicht mehr mit Brian gesprochen.
+
+I haven’t spoken to Brian in a long time.~~~"
+"Ich würde gerne|||I would like to
+
+Ich würde gerne einmal das Weiße Haus in Washington sehen.
+
+I would like to see the White House in Washington at some point.~~~"
+"Ihm|||It
+
+Das Baby hat Hunger – ich werde ihm etwas zu essen geben.
+
+The baby is hungry – I will give it some food.~~~"
+"Ihnen|||Them
+
+Kannst du ihnen bitte sagen, dass ich mich verspäten werde?
+
+Can you please tell them that I will be running late?~~~"
+"Ihr|||Her or Their
+
+Ihr Mann spricht Italienisch und ihr Kind ebenfalls.
+Her husband speaks Italian and her child as well.
+
+Das ist ihr Auto.
+That is her car.
+
+Ich habe ihr Buch gelesen.
+I read her book.
+
+Das ist ihr Haus.
+That is their house.
+
+Ich kenne ihre Freunde.
+I know their friends.
+
+~~~"
+"Ihre|||Her or Your (polite, singular or plural) or Their
+
+Das ist Ihre Tasche.
+That is her bag.
+
+Haben Sie Ihre Unterlagen dabei?
+Do you have your documents with you?
+
+Ihre Firma ist extrem erfolgreich.
+Their company is extremely successful.
+
+Ihre Kinder sind sehr freundlich.
+Their children are very friendly.
+
+
+
+~~~"
+"Ihrem|||“to her / for her” or “to them / for them”
+
+Sie werden in ihrem neuen Auto kommen.
+They will come in their new car.
+
+Ich werde Sie zu Ihrem Auto bringen.
+I will take you to your car.
+
+Ich gebe ihrem Bruder das Buch.
+I give her brother the book.
+
+Wir helfen ihrem Vater im Garten.
+We are helping her father in the garden.
+
+Der Lehrer vertraut ihrem Team.
+The teacher trusts their team.
+
+~~~"
+"Ihrer|||“of her / of them / of you (formal)” or “to her / for her / to them / for them”
+
+Der Mann ihrer Freundin ist Anwalt.
+The husband of her friend is a lawyer (attorney).
+
+Das ist das Auto ihrer Mutter.
+That is her mother’s car.
+
+Die Meinung ihrer Freunde ist wichtig.
+The opinion of their friends is important.
+
+Ich gebe ihrer Schwester das Buch.
+I give her sister the book.
+
+Wir helfen ihrer Eltern im Garten.
+We help their parents in the garden.
+
+~~~"
+"Indem|||“by [doing something]” or “while doing something”
+
+Wir werden gewinnen, indem wir hart trainieren.
+We will win by training hard.
+
+Er verbessert sein Deutsch, indem er jeden Tag übt.
+He improves his German by practicing every day.
+
+Du kannst Energie sparen, indem du das Licht ausschaltest.
+You can save energy by turning off the light.
+
+Sie löst das Problem, indem sie die Experten fragt.
+She solves the problem by asking the experts.~~~"
+"Innerhalb|||“within” or “inside of”
+
+Innerhalb weniger Minuten hatten sie alles aufgegessen.
+Within a few minutes they had eaten everything.
+
+Innerhalb einer Woche bekomme ich die Antwort.
+I will get the answer within a week.
+
+Das Projekt muss innerhalb eines Monats abgeschlossen werden.
+The project must be completed within a month.
+
+Innerhalb des Hauses herrscht Ruhe.
+Inside the house, it is quiet.
+
+Die Regel gilt innerhalb des Geländes.
+The rule applies within the premises.
+
+~~~"
+"Ins|||“into the”
+
+Wir gehen jetzt ins Wasser.
+We’re going into the water now.
+
+Ich gehe ins Kino.
+I am going to the cinema.
+
+Wir fahren ins Ausland.
+We are traveling abroad.
+
+Er legt das Buch ins Regal.
+He puts the book on/into the shelf.~~~"
+"Insgesamt|||“overall” or “all in all” or “in total”
+
+Heute Abend haben wir insgesamt 1000 Euro verdient!
+This evening we earned a total of 1000 Euros!
+
+Insgesamt hat das Team gut gearbeitet.
+Overall, the team worked well.
+
+Es gibt insgesamt 50 Teilnehmer.
+There are 50 participants in total.
+
+Insgesamt war die Veranstaltung ein großer Erfolg.
+All in all, the event was a great success.
+
+Die Kosten betragen insgesamt 200 Euro.
+The costs amount to 200 euros in total.~~~"
+"Interessieren|||“to interest” or “to be interested in”
+
+Er scheint sich nicht besonders für Kunst zu interessieren.
+It seems that art does not particularly interest him.
+
+Ich interessiere mich für Musik.
+I am interested in music.
+
+Er interessiert sich sehr für Geschichte.
+He is very interested in history.
+
+Interessierst du dich für Sport?
+Are you interested in sports?~~~"
+"Irgendein|||“any” or “some” or “some kind of”
+
+Hast du irgendein Buch gelesen?
+Have you read any book?
+
+Ich brauche irgendein Getränk.
+I need some kind of drink.
+
+Irgendein Mensch muss das wissen.
+Some person must know that.
+
+Wir können irgendeine Lösung finden.
+We can find any solution.~~~"
+"Irgendeine|||“any” or “some” or “some kind of”
+
+Hast du irgendeine Ahnung, wie kompliziert das ist?
+Do you have any idea how complicated this is?
+
+Hast du irgendeine Idee?
+Do you have any idea?
+
+Ich brauche irgendeine Frau, die mir helfen kann.
+I need some woman who can help me.
+
+Irgendeine Lösung muss doch funktionieren.
+Some solution must work after all.
+
+Sie erzählt immer irgendeine Geschichte.
+She always tells some story or other.~~~"
+"Irgendetwas|||“something” or “anything”
+
+Ich würde gerne irgendetwas Süßes essen.
+I would like to eat something sweet.
+
+Willst du irgendetwas essen?
+Do you want something to eat?
+
+Ich habe irgendetwas im Kopf, kann mich aber nicht erinnern.
+I have something in mind, but I can’t remember.
+
+Er tut immer irgendetwas, das nervt.
+He always does something that’s annoying.
+
+Hast du irgendetwas Interessantes gesehen?
+Did you see anything interesting?~~~"
+"Irgendjemand|||“someone” or “anyone” or “somebody”
+
+Hat irgendjemand meine Tasche gesehen?
+Has anyone seen my bag?
+
+Irgendjemand muss doch die Antwort wissen.
+Somebody must know the answer.
+
+Ich habe mit irgendjemand im Park gesprochen.
+I spoke with someone in the park.
+
+Kann irgendjemand mir helfen?
+Can anyone help me?~~~"
+"Irgendwann|||“sometime” or “at some point” or “eventually”
+
+Wir sollten irgendwann einmal zusammen Abendessen gehen.
+We should go out for dinner together sometime.
+
+Irgendwann werde ich nach Japan reisen.
+At some point, I will travel to Japan.
+
+Wir treffen uns irgendwann nächste Woche.
+We’ll meet sometime next week.
+
+Irgendwann versteht jeder den Witz.
+Eventually, everyone understands the joke.
+
+Früher oder später wirst du die Wahrheit erfahren – irgendwann.
+Sooner or later, you’ll find out the truth – at some point.~~~"
+"Irgendwas|||“something” or “anything”
+
+Wir sollten irgendwas essen.
+We should eat something.
+
+Willst du irgendwas trinken?
+Do you want something to drink?
+
+Er hat irgendwas Lustiges gesagt.
+He said something funny.
+
+Ich mache irgendwas im Garten.
+I’m doing something in the garden.
+
+Hast du irgendwas Interessantes gefunden?
+Did you find anything interesting?~~~"
+"Irgendwelche|||“any” or “some”
+
+Hast du irgendwelche Vorschläge, wie man das System verbessern könnte?
+Do you have any suggestions how we could improve the system?
+
+Hast du irgendwelche Freunde hier?
+Do you have any friends here?
+
+Ich habe irgendwelche Bücher auf dem Tisch gefunden.
+I found some books on the table.
+
+Irgendwelche Fragen?
+Any questions?
+
+Wir brauchen irgendwelche Freiwilligen für das Projekt.
+We need some volunteers for the project.~~~"
+"Irgendwo|||“somewhere” or “anywhere”
+
+Können wir irgendwo ein Wasser trinken?
+Can we drink some water somewhere?
+
+Ich habe meinen Schlüssel irgendwo liegen lassen.
+I left my key somewhere.
+
+Wir treffen uns irgendwann und irgendwo.
+We’ll meet sometime and somewhere.
+
+Irgendwo muss es einen guten Ort zum Essen geben.
+There must be a good place to eat somewhere.
+
+Kannst du irgendwo einen Parkplatz finden?
+Can you find a parking space anywhere?~~~"
+"Irren|||To be mistaken or wrong, or to wander or go astray
+
+Es ist ganz normal, sich manchmal zu irren.
+It is completely normal to be wrong sometimes.
+
+Wenn ich mich nicht irre, beginnt das Meeting um 10 Uhr.
+If I’m not mistaken, the meeting starts at 10 o’clock.
+
+Du irrst dich, das ist nicht richtig.
+You are mistaken; that’s not correct.
+
+Ich habe mich geirrt.
+I was mistaken.
+
+Er irrte durch die Straßen der Stadt.
+He wandered through the streets of the city.
+
+Die Gedanken irren oft ohne Ziel.
+Thoughts often wander aimlessly.
+
+~~~"
+"Ist|||Is
+
+Es ist heute sonnig und warm.
+
+Today it is sunny and warm.~~~"
+"Jagen|||To hunt
+
+Ich denke nicht, dass man Tiere zum Spaß jagen sollte.
+
+I don’t think you should hunt animals just for fun.~~~"
+"Je|||Each
+
+Es gibt ein kostenloses Mittagessen je Person.
+
+There is one free lunch for each person.~~~"
+"Jede|||Each or Every
+
+Jede Nacht schläft er auf dem Sofa ein.
+
+Each night he falls asleep on the sofa.~~~"
+"Jedenfalls|||In any case
+
+Jedenfalls denke ich, dass das die beste Lösung ist.
+
+I think that this is the best solution in any case.~~~"
+"Jeder|||“everyone” or “every” or “each”
+
+Jeder in dieser Firma hat bestimmte Aufgaben zu erledigen.
+Everyone in this company has certain tasks to complete.
+
+Jeder hat das Recht auf Freiheit.
+Everyone has the right to freedom.
+
+Jeder ist willkommen.
+Everyone is welcome.
+
+Jeder muss seine Hausaufgaben machen.
+Everyone has to do their homework.
+
+Jeder Tag ist wichtig.
+Every day is important.
+
+Ich habe jeden Schüler gefragt.
+I asked every student.
+
+
+
+~~~"
+"Jedes|||Each
+
+Jedes Kind bekommt einen Sticker.
+
+Each child gets a sticker.~~~"
+"Jedoch|||However
+
+Ich mag ihn wirklich, jedoch wohnt er sehr weit weg.
+
+I really like him, however, he lives very far away.~~~"
+"Jemals|||Ever
+
+Warst du jemals in Ägypten?
+
+Have you ever been to Egypt?~~~"
+"Jemand|||Someone
+
+Kann mir bitte jemand helfen?
+
+Can someone please help me?~~~"
+"Kämpfen|||To fight
+
+Es hat keinen Sinn, noch weiter zu kämpfen.
+
+It makes no sense to continue to fight (battle or stuggle).~~~"
+"Kapieren|||To get it or understand
+
+Ich kann nicht kapieren, wie man so blöd sein kann.
+I don’t understand how one can be so stupid.
+
+Ich kapier das nicht.
+I don’t get it. / I don’t understand this.
+
+Hast du es endlich kapiert?
+Did you finally get it?
+
+Keine Sorge, du wirst es schon kapieren.
+Don’t worry, you’ll get it.
+
+Jetzt kapiere ich, warum er so reagiert hat.
+Now I understand why he reacted that way.~~~"
+"Kaum|||Hardly
+
+Sie hat gestern Nacht kaum geschlafen.
+
+She hardly (or barely) slept last night.~~~"
+"Kehren|||To sweep
+
+Jede Woche muss sie die Treppen im Haus kehren.
+
+Every week she has to sweep the stairs in the house.~~~"
+"Keiner|||Nobody
+
+Keiner hat uns gesagt, dass der Laden geschlossen hat.
+
+Nobody told us that the shop is closed.~~~"
+"Kennenlernen|||To get to know (someone)
+
+Ich würde das Team gerne besser kennenlernen.
+
+I would like to get to know the team better.~~~"
+"Klappen|||To work out
+
+Hoffentlich wird morgen alles klappen.
+
+Hopefully, everything will work out tomorrow.~~~"
+"Klauen|||To steal
+
+In diesem Laden klauen Kinder oft Süßigkeiten.
+
+Children often steal sweets in this shop.~~~"
+"Kleiner|||Minor
+
+Es war nur ein kleiner Vorfall.
+
+It was just a minor incident.~~~"
+"Klingeln|||To ring
+
+Wie lange willst du dein Handy noch klingeln lassen?
+
+How long do you want to let your cell phone ring?~~~"
+"Klingen|||To sound
+
+Diese Ideen klingen wunderbar!
+
+These ideas sound wonderful!~~~"
+"Klopfen|||To knock
+
+Kannst du bitte klopfen, bevor du hereinkommst?
+
+Can you please knock before coming in?~~~"
+"Klug|||Smart or Wise
+
+Sie ist sehr klug für ihr Alter.
+
+She is very wise for her age.~~~"
+"Knapp|||Scarce
+
+Im Sommer wird das Wasser in dieser Region knapp.
+
+In summer water is scarce in this region.~~~"
+"Komplett|||Completely
+
+Er hat die Marmelade komplett leer gegessen!
+
+He completely finished the jam!~~~"
+"Können|||To be able to
+
+Ich kann schwimmen.
+
+I am able to Swim.~~~"
+"Konzentrieren|||To focus
+
+Er kann sich bei diesem Lärm nicht konzentrieren.
+
+He cannot focus with this noise.~~~"
+"Kosten|||To cost
+
+Dieser Pullover kann nicht so viel kosten!
+
+This pullover cannot cost this much!~~~"
+"Kriegen|||To get
+
+Er kann einfach nicht genug von ihr kriegen.
+
+He simply cannot get enough of her.~~~"
+"Kümmern|||To look after
+
+Keine Sorge, ich werde mich um den Hund kümmern.
+
+Don’t worry, I will look after the dog.~~~"
+"Lächeln|||To smile
+
+Ich muss immer lächeln, wenn ich meinen Neffen sehe.
+
+I always have to smile when I see my nephew.~~~"
+"Lächerlich|||Ridiculous
+
+Dein Verhalten heute Abend war einfach lächerlich!
+
+Your behavior this evening was simply ridiculous!~~~"
+"Landen|||To land
+
+Wir werden in wenigen Minuten in Santiago landen.
+
+In a few minutes we will land in Santiago.~~~"
+"Langsam|||Slowly
+
+Du musst dich der Katze langsam nähern.
+
+You have to approach the cat slowly.~~~"
+"Längst|||A long time ago
+
+Sie hat die Hoffnung auf ein besseres Leben längst aufgegeben.
+
+She gave up hope for a better life a long time ago.~~~"
+"Langweilig|||Boring
+
+Die Vorstellung war nicht sehr kreativ und extrem langweilig.
+
+The performance was not very creative and extremely boring.~~~"
+"Lauten|||To be called
+
+Die Antworten lauten “A” und “D“.
+
+The answers are called “A” and “D”~~~"
+"Lebend|||Alive
+
+Wir müssen ihn hier lebend herausholen!
+
+We have to get him out of here alive!~~~"
+"Lebendig|||Alive
+
+Nach dieser Wanderung fühle ich mich so richtig lebendig.
+
+After this hike I feel really alive.~~~"
+"Leer|||Empty
+
+In dieser Flasche ist nichts mehr drin, sie ist leer.
+
+There is nothing left in this bottle, it’s empty.~~~"
+"Leg|||Put (Imperative)
+
+Leg das Buch auf den Tisch!
+
+Put the book on the table!~~~"
+"Legen|||To place
+
+Du kannst die Äpfel in die Schale legen.
+
+You can place the apples in the bowl.~~~"
+"Leicht|||Easily
+
+Das können wir leicht ändern.
+
+We can change that easily.~~~"
+"Leiden|||To suffer
+
+Viele Menschen und Tiere leiden unter der Hitze.
+
+Many people and animals suffer because of the heat.~~~"
+"Leise|||Quiet
+
+Wir müssen ganz leise gehen.
+
+We have to leave very quietly.~~~"
+"Leisten|||To afford
+
+Er kann sich momentan kein neues Auto leisten.
+
+He cannot afford a new car at the moment.~~~"
+"Leiten|||To conduct
+
+Dr. Schmidt wird das Experiment leiten.
+
+Dr. Schmidt will conduc t the experiment.~~~"
+"Liebe|||Dear (Feminine)
+
+Liebe Marie, kannst du das bitte machen?
+
+Dear Marie, can you please do that?~~~"
+"Lieben|||To love
+
+Eltern werden ihre Kinder immer lieben.
+
+Parents will always love their children.~~~"
+"Lieber|||Rather
+
+Er würde lieber nach Hause gehen.
+
+He would rather go home.~~~"
+"Liefern|||To provide
+
+Er ist sich nicht sicher, ob sie die Ware liefern können.
+
+He is not sure if they can provide the goods.~~~"
+"Liegen|||To lie
+
+Ich möchte jetzt auch gerne in der Sonne liegen.
+
+I would also like to lie in the sun now.~~~"
+"Locker|||Loose
+
+Diese Hose sitzt etwas locker.
+
+These trousers are a little loose.~~~"
+"Lösen|||To solve
+
+Ich bin mir nicht sicher, wie ich dieses Problem lösen soll.
+
+I am not sure how to solve this problem.~~~"
+"Lustig|||Funny
+
+Er findet diesen Witz wirklich lustig.
+
+He finds this joke really funny.~~~"
+"Mach|||Do (Imperative)
+
+Mach es jetzt sofort!
+
+Do it now!~~~"
+"Machen|||To do
+
+Was können wir in dieser Situation nur machen?
+
+What can we do in this situation?~~~"
+"Mächtig|||Powerful
+
+Der Präsident dieses Landes ist sehr mächtig.
+
+The president of this country is very powerful.~~~"
+"Man|||One
+
+Es ist so dunkel, dass man gar nichts sehen kann.
+
+It is so dark that one cannot see anything.~~~"
+"Manch|||Some
+
+Es gab schon manch komische Ereignisse in dieser Schule!
+
+There have been some strange events at this school!~~~"
+"Manchmal|||Sometimes
+
+Manchmal wäre es schön, mehr Geld zu haben.
+
+Sometimes it would be nice to have more money.~~~"
+"Medizinischen|||Medical
+
+Sie muss morgen früh zu einer medizinischen Untersuchung gehen.
+
+She has to go to a medical examination tomorrow morning.~~~"
+"Meinen|||To mean
+
+Wir meinen, dass du jetzt gehen solltest.
+
+We mean, that you should go now.~~~"
+"Meiner|||Mine (Masculine)
+
+-Ist das dein Stift? - Ja, das ist meiner.
+
+-Is that your pen? – Yes, that’s mine.~~~"
+"Melden|||To report
+
+Wir müssen den Vorfall melden.
+
+We have to report the incident.~~~"
+"Menschlich|||Human
+
+Die Gesichtszüge vieler Affen sind sehr menschlich.
+
+The facial expressions of many monkeys are very human.~~~"
+"Merken|||To notice
+
+Wir merken alle, dass hier etwas nicht stimmt.
+
+We all notice that something isn’t right here.~~~"
+"Merkwürdig|||Strange
+
+Ich finde, dass er sich heute sehr merkwürdig benimmt.
+
+I think he is behaving very strange today.~~~"
+"Mies|||Lousy
+
+Ich fühle mich schon die ganze Woche richtig mies.
+
+I have been feeling lousy for the entire week.~~~"
+"Mindestens|||At least
+
+Wir müssen mindestens noch 100 Euro sparen.
+
+We have to save up at least another 100 Euros.~~~"
+"Miteinander|||Together
+
+Ihr solltet versuchen, mehr miteinander zu unternehmen.
+
+You should try doing more things together.~~~"
+"Mitgebracht|||Brought
+
+Ich habe dir ein paar Andenken aus Mexiko mitgebracht.
+
+I brought you some souvenirs from Mexico.~~~"
+"Mitgenommen|||Taken
+
+Es scheint, als hätte ich das falsche Handy mitgenommen!
+
+It seems like I have taken the wrong cell phone with me!~~~"
+"Mitnehmen|||To take
+
+Wie können dich bis zum Bahnhof mitnehmen.
+
+We can take you with us to the train station.~~~"
+"Mitten|||In the middle
+
+Das Auto hat mitten auf der Straße geparkt!
+
+The car parked in the middle of the road!~~~"
+"Mögen|||To like
+
+Normalerweise mögen Kinder Schokolade sehr.
+
+Normally children like chocolate a lot.~~~"
+"Möglich|||Possible
+
+Ist es möglich, den Flug zu stornieren?
+
+Is it possible to cancel the flight?~~~"
+"Möglicherweise|||Possibly
+
+Morgen wird es möglicherweise schneien!
+
+It will possibly snow tomorrow!~~~"
+"Momentan|||Currently
+
+Ihr Mann William ist momentan in China.
+
+Her husband William is currently in China.~~~"
+"Morgen|||Tomorrow
+
+Morgen kommt uns Anna besuchen.
+
+Anna will visit us tomorrow.~~~"
+"Morgens|||In the morning
+
+Morgens trinke ich immer eine Tassee Kaffee.
+
+In the morning I always drink a cup of coffee.~~~"
+"Müssen|||To have to
+
+Wir alle haben viele Dinge, die wir erledigen müssen.
+
+We all have many things that we must do.~~~"
+"Nachdenken|||To think about or ponder
+
+Ich muss darüber nachdenken, wie wir das Problem lösen können.
+
+I need to think about how we can solve this problem.~~~"
+"Nachgedacht|||Thought
+
+Ich habe viel darüber nachgedacht, was passiert ist.
+
+I thought a lot about what happened.~~~"
+"Nachher|||Afterwards
+
+Nachher gehen wir in ein italienisches Restaurant.
+
+Afterwards we are going to an Italian restaurant.~~~"
+"Nachts|||At night
+
+Du solltest nachts nicht alleine in die Stadt gehen.
+
+You shouldn’t go to the city alone at night.~~~"
+"Näher|||Closer
+
+Wenn du näher an das Bild herangehst, kannst du die Farben besser sehen.
+
+If you get closer to the picture you can see the colors better.~~~"
+"Namens|||Called
+
+Ich kannte einmal einen Mann namens Johannes.
+
+I once knew a man called Johannes.~~~"
+"Nämlich|||Namely
+
+Es gibt hier eine Person, die Probleme macht – nämlich dich.
+
+There is one person that is causing problems – namely you.~~~"
+"Natürlich|||Of course
+
+-Kann ich noch etwas Tee haben? - Natürlich!
+
+-Can I have more tea? – Of course!~~~"
+"Ne|||Nah
+
+-Sollen wir heute ins Kino gehen? - Ne, ich bin zu müde.
+
+-Shall we go to the cinema today? - Nah, I’m too tired.~~~"
+"Nehmen|||To take
+
+Kann ich mir noch ein Stück Kuchen nehmen?
+
+Can I take another piece of cake?~~~"
+"Nennen|||To call
+
+Du kannst mich Lila nennen.
+
+You can call me Lila.~~~"
+"Nichts|||Nothing
+
+Ich habe Hunger, denn ich habe heute noch nichts gegessen!
+
+I am hungry because I have eaten nothing today!~~~"
+"Niemals|||Never
+
+Er möchte niemals im Ausland arbeiten.
+
+He never wants to work abroad.~~~"
+"Nirgendwo|||Nowhere
+
+Wir sind hier mitten im Nirgendwo!
+
+We are in the middle of nowhere here!~~~"
+"Nochmal|||Again
+
+Kannst du das bitte nochmal sagen?
+
+Can you please say that again?~~~"
+"Normalerweise|||Normally
+
+Er kann normalerweise nicht so viel essen, doch heute hat er Hunger!
+
+He normally cannot eat that much but he is hungry today!~~~"
+"Nötig|||Necessary
+
+Ist es wirklich nötig, dass du so schreist?
+
+Is it really necessary for you to scream like that?~~~"
+"Nun|||Now
+
+Wir haben das Treffen nun auf Montag verlegt.
+
+We have now rescheduled the meeting for Monday.~~~"
+"Ob|||Whether
+
+Ich möchte gerne wissen, ob du mitkommst oder nicht.
+
+I would like to know whether you are coming or not.~~~"
+"Oben|||Up there
+
+Dort oben liegen viele Magazine.
+
+There are lots of magazines up there.~~~"
+"Obwohl|||Even though
+
+Ich habe Hunger, obwohl ich vorhin gegessen habe.
+
+I am hungry even though I ate earlier.~~~"
+"Offen|||Open
+
+Es ist wichtig, offen zu sein.
+
+It is important to be open-minded.~~~"
+"Offensichtlich|||Obviously
+
+Offensichtlich hast du dich überhaupt nicht verändert.
+
+Obviously, you haven’t changed one little bit.~~~"
+"Öffentlich|||Public
+
+Wir werden es heute öffentlich machen, dass wir zusammen sind.
+We will make it public today that we are together.
+
+Das ist ein öffentliches Gebäude.
+That is a public building.
+
+Die Sitzung ist öffentlich.
+The meeting is public.
+
+Er hat seine Meinung öffentlich gesagt.
+He expressed his opinion publicly.
+
+Öffentliche Verkehrsmittel sind hier sehr zuverlässig.
+Public transportation is very reliable here.~~~"
+"Offiziell|||Officially
+
+Sie sind jetzt offiziell ein Paar!
+
+They are officially a couple now!~~~"
+"Öffnen|||To open
+
+Sie möchte das Fenster öffnen.
+
+She would like to open the window.~~~"
+"Passen|||to fit
+
+Diese Schuhe passen mir einfach nicht!
+
+These shoes simply won’t fit me!~~~"
+"Peinlich|||Embarrassing
+
+Es ist mir wirklich peinlich, wie wenig ich über deine Kultur weiß.
+
+It is really embarrassing how little I know about your culture.~~~"
+"Perfekt|||Perfect or Perfectly
+
+Das Kleid passt perfekt!
+
+The dress fits perfectly!~~~"
+"Praktisch|||Practically
+
+Es its praktisch unmöglich, gegen ihn zu gewinnen.
+
+It is practically impossible to win against him.~~~"
+"Pro|||Per
+
+Es gibt nur eine Flasche Wasser pro Person.
+
+There is only one bottle of water per person.~~~"
+"Probieren|||To try
+
+Er möchte probieren, einen Kuchen zu backen.
+
+He would like to try to bake a cake.~~~"
+"Raten|||To advise
+
+Wir raten dir, dich von ihm fernzuhalten.
+
+We advise you to stay away from him.~~~"
+"Rauf|||Up
+
+Ohne Hilfe komme ich nicht auf diese Mauer rauf.
+
+I cannot get up this wall without any help.~~~"
+"Raus|||Out
+
+Wir müssen hier raus, bevor das Gebäude zusammenbricht!
+
+We have to get out before the building collapses!~~~"
+"Reden|||To talk
+
+Kann ich bitte mit dir reden?
+
+Can I talk to you, please?~~~"
+"Regeln|||To regulate
+
+Diese Schalter werden den Strom regeln.
+
+These switches will regulate the electricity.~~~"
+"Reichen|||To pass
+
+Kannst du mir bitte die Butter reichen?
+
+Can you please pass me the butter?~~~"
+"Rein/Hinein|||Get in
+
+Wie kommen wir da rein? (Wie kommen wir da hinein?)
+
+How do we get in there?~~~"
+"Reißen|||To tear
+
+Diese Hemden aus Seide reißen sehr leicht.
+
+These shirts made from silk tear easily.~~~"
+"Reiten|||To ride (On horseback)
+
+Ich würde gerne einmal auf einem Pferd reiten.
+
+I would like to ride on a horse one day.~~~"
+"Retten|||To save
+
+Kann man dieses Haus noch retten?
+
+Is it possible to save (or rescue) this house?~~~"
+"Richten|||To judge
+
+Am Ende wird er uns alle richten.
+
+In the end he will judge all of us.~~~"
+"Riechen|||To smell
+
+Ich kann den Rauch riechen.
+
+I can smell the smoke.~~~"
+"Riesig|||Huge
+
+Diese Pizza ist riesig!
+
+This pizza is huge!~~~"
+"Rüber|||Over
+
+Komm bitte rüber.
+
+Please come over.~~~"
+"Ruhen|||To rest
+
+Da du krank bist, solltest du im Bett bleiben und ruhen.
+
+As you are ill you should stay in bed and rest.~~~"
+"Ruhig|||Quiet
+
+Der Ort gefällt mir, weil es hier so ruhig ist.
+
+I like this place because it is so quiet here.~~~"
+"Runter|||Down
+
+Kannst du bitte runter in die Küche kommen?
+
+Can you please come down to the kitchen?~~~"
+"Satt|||Enough or Full or Rich Color
+
+Ich bin satt.
+I’m full.
+
+Nach dem Abendessen waren alle satt.
+After dinner, everyone was full.
+
+Er hat die Nase voll, er ist satt von all den Ausreden.
+He’s fed up; he’s had enough of all the excuses.
+
+Ich habe satt Geld gespart.
+I’ve saved plenty of money.
+
+Die Farbe ist satt und kräftig.
+The color is rich and vibrant.~~~"
+"Sauer|||Sour
+
+Der Apfel ist so sauer, dass ich ihn nicht essen kann.
+
+The apple is so sour that I cannot eat it.~~~"
+"Schade|||Too bad / What a shame
+
+Es ist wirklich schade, dass du schon gehst.
+What a shame that you are leaving already.
+
+Schade, dass du nicht kommen kannst.
+It’s a pity that you can’t come.
+
+Oh, schade! Ich habe das Konzert verpasst.
+Oh, too bad! I missed the concert.
+
+Es ist wirklich schade, dass das Wetter so schlecht ist.
+It’s really a shame that the weather is so bad.~~~"
+"Schälen|||To peel
+
+Du musst noch ein Kilo Kartoffeln schälen!
+
+You still have to peel a kilo of potatoes.~~~"
+"Schämen|||To be ashamed
+
+Wir schämen uns alle, dass wir uns nicht mehr angestrengt haben.
+
+We are all ashamed that we didn’t put more effort in.~~~"
+"Scharf|||Sharp
+
+Das Messer ist sehr scharf.
+
+The knife is very sharp.~~~"
+"Schätzen|||To estimate
+
+Experten schätzen, dass die Erderwärmung immer schneller voranschreiten wird.
+
+Experts estimate that global warming will advance faster and faster.~~~"
+"Schauen|||To look
+
+Sie werden alle aus dem Fenster schauen.
+
+They will all look outside the window.~~~"
+"Schenken|||To give (as a gift)
+
+Ich möchte dir gerne diese Kette schenken.
+
+I would like to give this necklace to you.~~~"
+"Schick|||chic
+
+Du siehst schick aus!
+
+You look chic!~~~"
+"Schieben|||To push
+
+Wir können die Kiste nicht anheben, wir müssen sie schieben.
+
+We cannot pick up the box, we have to push it.~~~"
+"Schief|||Crooked
+
+Das Regal ist ganz schief!
+
+The shelf is totally crooked!~~~"
+"Schießen|||To shoot
+
+Er möchte nicht auf das Ziel schießen.
+
+He does not want to shoot the target.~~~"
+"Schlagen|||To beat
+
+Wir werden euch in dieser Runde schlagen!
+
+We will beat you in this round.~~~"
+"Schlau|||Smart
+
+Er ist für sein Alter wirklich schon sehr schlau!
+
+He really is very smart for his age!~~~"
+"Schlechter|||Worse
+
+Heute ist das Wetter schlechter als gestern.
+
+Today the weather is worse than yesterday.~~~"
+"Schließen|||To close or shut down
+
+Den Laden musste man leider schließen.
+
+Unfortunately, the shop had to be shut down.~~~"
+"Schließlich|||After all
+
+Wir gehen jetzt – schließlich müssen wir morgen früh aufstehen.
+
+We are going now – we have to get up early tomorrow after all.~~~"
+"Schlimm|||Bad
+
+Es ist schlimm, dass du nicht mit ihr redest.
+
+It is bad you’re not talking to her.~~~"
+"Schlimmer|||Worse
+
+Meine Erkältung wird jeden Tag schlimmer.
+
+My cold is getting worse every day.~~~"
+"Schmutzig|||Dirty
+
+Was hast du gemacht? Deine Hände sind ganz schmutzig!
+
+What did you do? Your hands are all dirty!~~~"
+"Schnappen|||To grab
+
+Ich werde mir im Laden noch schnell eine Flasche Wasser schnappen.
+
+I will quickly go and grab a bottle of water from the shop.~~~"
+"Schnell|||Quickly
+
+Sie müssen noch schnell eine E-Mail schreiben.
+
+You quickly have to write an email.~~~"
+"Schön|||Nice
+
+Die Aussicht von hier ist wirklich schön!
+
+The view from here is really nice!~~~"
+"Schönen|||Beautiful
+
+An einem solch schönen Abend sollte man einen Spaziergang machen.
+
+One should go for a walk on such a beautiful evening.~~~"
+"Schöner|||Beautiful
+
+Das ist ein sehr schöner Hund – welche Rasse ist das?
+
+This is a very beautiful dog – what breed is it?~~~"
+"Schrecklich|||Terrible
+
+Es ist schrecklich, dass du so krank bist.
+
+It’s terrible that you’re so ill.~~~"
+"Schreien|||To shout
+
+Du musst lauter schreien, damit sie dich hört.
+
+You have to shout louder so she can hear you.~~~"
+"Schulden|||To owe
+
+Sie schulden ihm mehr als 1000 Euro.
+
+They owe him more than 1000 Euros.~~~"
+"Schuldig|||Guilty
+
+Sie fühlt sich schuldig, obwohl sie nichts gemacht hat.
+
+She feels guilty even though she hasn’t done anything.~~~"
+"Schützen|||To protect
+
+Du solltest Sonnencreme benutzen, um dich vor der Sonne zu schützen.
+
+You should wear sunscreen in order to protect yourself from the sun.~~~"
+"Schwach|||Weak
+
+Er ist zu schwach, um weiter zu gehen.
+
+He is too weak to continue walking.~~~"
+"Schweigen|||To remain silent
+
+Wir sollten alle für einen Moment schweigen.
+
+We should all remain silent for a moment.~~~"
+"Schwören|||To swear
+
+Du musst schwören, dass du nichts sagst.
+
+You have to swear that you won’t say anything.~~~"
+"Schwul|||Gay
+
+Er ist schwul und seine Eltern unterstützen ihn.
+
+He is gay, and his parents support him.~~~"
+"Sei vorsichtig|||To be careful
+
+Sei vorsichtig! Dieses Gelände darf man nicht betreten!
+
+Be careful! You are not permitted to enter this area!~~~"
+"Seinen|||Its
+
+Das Pferd hört seinen Besitzer.
+
+The horse hears its owner.~~~"
+"Seiner|||Its
+
+Das Kind sucht nach seiner Mutter.
+
+The child is looking for its mother.~~~"
+"Seitdem|||Since then
+
+Sie war gestern im Büro. Ich habe sie seitdem nicht mehr gesehen.
+
+She was in the office yesterday. I haven’t seen her since then.~~~"
+"Selben|||Same
+
+Ich sehe jeden Tag den selben Mann im Buss.
+
+I see the same man on the bus every day.~~~"
+"Selber|||Itself
+
+Es wird sich von selber regeln.
+
+It will resolve itself.~~~"
+"Selbst|||Even
+
+Jeder muss diese Prüfung machen – selbst du!
+
+Everyone has to do the exam – even you!~~~"
+"Selten|||Rarely
+
+Ich esse selten Fleisch.
+
+I rarely eat meat.~~~"
+"Seltsam|||Strange
+
+Dieser Mann sieht seltsam aus.
+
+This man looks strange.~~~"
+"Setzen|||To set
+
+Wir sollten unseren Kindern Grenzen setzen.
+
+We should set boundaries for our children.~~~"
+"Sich|||Itself
+
+Siehst du das Tier? Es hat sich selbst in den Schwanz gebissen!
+
+Can you see the animal? It just bit itself in the tail!~~~"
+"Sicher|||“safe” or “certain” or “sure”
+
+Das Haus ist sicher.
+The house is safe.
+
+Bist du sicher unterwegs?
+Are you traveling safely?
+
+Ich bin mir sicher, dass er kommt.
+I’m sure that he’s coming.
+
+Bist du sicher?
+Are you sure?
+
+Sicher, ich helfe dir.
+Sure, I’ll help you.
+
+Möchtest du nach der Arbeit etwas Essen gehen? - Sicher, das hört sich gut an!
+Would you like to go and get something to eat after work? – For sure, that sounds good!
+
+Könnten Sie mir bitte noch einen Tee bringen? - Sicher, einen Moment, bitte!
+Could you please bring me another tea? - Certainly, one moment, please!
+
+~~~"
+"Sichern|||To secure
+
+Ich werde noch schnell die Fenster sichern.
+
+I will quickly secure the windows.~~~"
+"Sobald|||As soon as
+
+Sobald ich Zeit habe, rufe ich dich an.
+
+As soon as I have time I will call you.~~~"
+"Sofort|||Immediately
+
+Wir brauchen sofort Hilfe!
+
+We need help immediately!~~~"
+"Sogar|||Even
+
+Sogar meine Großmutter musste stehen!
+
+Even my grandmother had to stand!~~~"
+"Solange|||As long as
+
+Solange du glücklich bist, bin ich es auch.
+
+As long as you are happy, I am, too!~~~"
+"Solch|||Such
+
+Er ist solch ein guter Mann.
+
+He is such a good man.~~~"
+"Sollte|||Should
+
+Sie sollte sich bei der Arbeit mehr Mühe geben.
+
+She should put in more effort at work.~~~"
+"Sondern|||But
+
+Ich komme nicht aus Deutschland, sondern aus der Schweiz.
+
+I’m not from Germany but from Switzerland.~~~"
+"Sonst|||Otherwise
+
+Sag mir die Wahrheit - sonst gehe ich nach Hause.
+
+Tell me the truth – otherwise I am going home.~~~"
+"Sorgen|||To take care of
+
+Wir werden für deine Kinder sorgen.
+
+We will take care of your children.~~~"
+"Sowas|||Something
+
+Sowas könnte ich auch gut gebrauchen.
+
+I could use something like that.~~~"
+"Soweit|||As far as
+
+Soweit ich weiß, gibt es heute keine Besprechungen mehr.
+
+As far as I know there are no more meetings today.~~~"
+"Sowieso|||Anyway
+
+Ich wollte sowieso nicht ins Kino gehen, weil ich krank bin.
+
+I didn’t want to go to the cinema anyway because I am ill.~~~"
+"Spannend|||Exciting
+
+Er findet diesen Abenteuerroman wirklich spannend.
+
+He finds this adventure novel really exciting.~~~"
+"Sparen|||To save up
+
+Sie möchte Geld sparen, um nach Bali gehen zu können.
+
+She wants to save up money to be able to go to Bali.~~~"
+"Springen|||To jump
+
+Du musst über das Seil springen.
+
+You have to jump over the rope.~~~"
+"Spüren|||To feel
+
+Kannst du spüren, wie sich der Boden bewegt?
+
+Can you feel the ground moving?~~~"
+"Stammen|||To come from
+
+Meine Eltern stammen aus Australien.
+
+My parents come from Australia.~~~"
+"Ständig|||Constantly
+
+Er ist erkältet und muss ständig niesen.
+
+He has a cold and constantly needs to sneeze.~~~"
+"Statt|||Instead of
+
+Du solltest mehr arbeiten, statt so viel mit deinen Kollegen zu reden.
+
+You should work more instead of talking to your colleagues so much.~~~"
+"Stehlen|||To steal
+
+Der Junge kann nicht aufhören, Sachen zu stehlen.
+
+The boy cannot stop stealing things.~~~"
+"Steige|||Climb
+
+Ich steige langsam den Berg hinauf.
+
+I slowly climb up the mountain.~~~"
+"Steigen|||To rise
+
+Die Meeresspiegel steigen immer weiter an.
+
+The sea levels constantly rise further.~~~"
+"Sterben|||To die
+
+Eines Tages müssen wir alle sterben.
+
+One day we all have to die.~~~"
+"Stinken|||To stink
+
+Meine Füße stinken in diesen Schuhen immer sehr!
+
+My feet always really stink in these shoes!~~~"
+"Stöhnen|||To moan
+
+Kannst du bitte aufhören, so zu stöhnen?
+
+Can you please stop moaning like that?~~~"
+"Stören|||To disturb
+
+Wir dürfen ihn nicht bei der Arbeit stören.
+
+We are not allowed to disturb him at work.~~~"
+"Streiten|||To argue
+
+Es gefällt mir nicht, wenn wir uns streiten.
+
+I don’t like it when we argue.~~~"
+"Sünden|||Sins
+
+Jesus hat unsere Sünden auf sich genommen.
+
+Jesus took our sins away from us.~~~"
+"Süßer|||Sweeter
+
+Dein Tee ist viel süßer als meiner.
+
+Your tea is much sweeter than mine.~~~"
+"Tatsächlich|||Indeed
+
+Du hast tatsächlich recht.
+
+You are right indeed.~~~"
+"Taub|||Deaf
+
+Er kann nichts hören, da er taub ist.
+
+He cannot hear anything, as he is deaf.~~~"
+"Tauchen|||To dive
+
+Ich würde gerne lernen, zu tauchen.
+
+I would like to learn how to dive.~~~"
+"Tausende|||Thousands
+
+Jedes Jahr produzieren wir tausende Tonnen Müll.
+
+Every year we produce thousands of tons of rubbish.~~~"
+"Teilen|||To share
+
+Es ist wichtig, dass Kinder lernen, zu teilen.
+
+It is important for children to learn how to share.~~~"
+"Tja|||Well
+
+Tja, mehr kann ich dazu nicht sagen.
+
+Well, I cannot say any more to that.~~~"
+"Toll|||Great
+
+Der Abend war wirklich toll!
+
+The evening was really great!~~~"
+"Tollen|||Great
+
+Wo hast du diesen tollen Pullover gekauft?
+
+Where did you buy this great pullover?~~~"
+"Total|||Totally
+
+Du bist ja total verrückt!
+
+You are totally crazy!~~~"
+"Töten|||To kill
+
+Es ist falsch, andere Menschen zu töten.
+
+It is wrong to kill other people.~~~"
+"Tragen|||To wear
+
+Er wird heute eine Krawatte tragen.
+
+He will wear a tie today.~~~"
+"Träumen|||To dream
+
+Heute Nacht werde ich von meiner Arbeit träumen.
+
+Tonight, I will dream about my work.~~~"
+"Traurig|||Sad
+
+Sie ist traurig, weil sie sich gestritten haben.
+
+She is sad because they had an argument.~~~"
+"Treiben|||To drive
+
+Du wirst mich mit deinen dummen Kommentaren in den Wahnsinn treiben!
+
+You are going to drive me insane with your stupid comments!~~~"
+"Trennen|||To separate
+
+Vielleicht ist es das Beste, wenn wir uns trennen.
+
+Maybe it’s best if we separate.~~~"
+"Trotz|||In spite of
+
+Sie gehen trotz des schlechten Wetters an den Strand.
+
+They are going to the beach in spite of the bad weather.~~~"
+"Trotzdem|||Nevertheless
+
+Es ist kalt, aber ich möchte trotzdem nach draußen gehen.
+
+It is cold, but I would like to go outside nevertheless (or despite it or though).~~~"
+"Turteln|||To flirt
+
+Die beiden turteln miteinander.
+These two flirt with each other.
+
+Die beiden turteln im Park.
+The two are cuddling/flirting in the park.
+
+Sie haben den ganzen Abend nur geturtelt.
+They spent the whole evening cuddling/flirting.
+
+Teenager turteln oft heimlich in der Schule.
+Teenagers often flirt secretly at school.~~~"
+"Über|||About
+
+Wir haben schon viel über dich gehört!
+
+We have heard a lot about you!~~~"
+"Überall|||Everywhere
+
+Dieses Produkt gibt es überall zu kaufen.
+
+You can buy this product everywhere.~~~"
+"Überhaupt|||""at all"" or ""in general"" or ""actually""
+
+Hast du überhaupt Zeit?
+Do you have time at all?
+
+Ich verstehe das überhaupt nicht.
+I don’t understand that at all.
+
+Überhaupt ist er sehr freundlich.
+Generally, he is very friendly.
+
+Das ist überhaupt nicht mein Stil.
+That is not at all my style.
+
+Überhaupt, hast du schon die Nachrichten gesehen?
+Actually, have you already seen the news?
+
+Er hat heute noch überhaupt nichts gegessen.
+He hasn’t eaten anything at all today.
+
+Hast du mir überhaupt zugehört?
+Did you listen to me at all?
+
+~~~"
+"Überlassen|||To leave
+
+Ich werde dir diese Entscheidung überlassen.
+
+I will leave this decision to you.~~~"
+"Überleben|||To survive
+
+Es ist schwierig, hier im Winter zu überleben.
+
+It is difficult to survive here in winter.~~~"
+"Überlebt|||Survived
+
+Er hat mehrere Unfälle überlebt.
+
+He survived several accidents.~~~"
+"Überlegen|||To think
+
+Du solltest dir überlegen, was du Andrea zum Geburtstag schenken wirst.
+
+You should think about what you are going to get Andrea for her birthday.~~~"
+"Übernehmen|||To take over
+
+Du musst das Geschäft übernehmen.
+
+You have to take over the business.~~~"
+"Überprüfen|||To check
+
+Kannst du bitte überprüfen, ob diese Daten stimmen?
+
+Can you please check if these dates are correct?~~~"
+"Überrascht|||Surprised
+
+Er ist überrascht, seine Tochter hier zu sehen.
+
+He is surprised to see his daughter here.~~~"
+"Übersetzen|||To translate
+
+Kannst du diesen Absatz bitte ins Englische übersetzen?
+
+Can you please translate this paragraph into English?~~~"
+"Überwachen|||To watch
+
+Sein Job ist es, das gesamte Gelände zu überwachen.
+
+His job is to watch the entire area.~~~"
+"Überweisen|||To transfer
+
+Sie wird dir das Geld heute Nachmittag überweisen.
+
+She will transfer the money to you this afternoon.~~~"
+"Überzeugen|||To convince
+
+Ich werde sie davon überzeugen, zu bleiben.
+
+I will convince her to stay.~~~"
+"Überzeugt|||Convinced
+
+Ich bin davon überzeugt, dass er die Prüfung bestehen wird.
+
+I am convinced that he will pass the exam.~~~"
+"Üblich|||Usual
+
+Es ist hier üblich, dass man erst sehr spät isst.
+
+It is usual here to eat very late.~~~"
+"Übrig|||Left over
+
+Nach der Party war noch sehr viel Essen übrig.
+
+After the party there was a lot of food left over.~~~"
+"Übrigens|||By the way
+
+Übrigens kann ich heute Mittag nicht zur Besprechung kommen.
+
+By the way, I will not be able to come to the meeting this afternoon.~~~"
+"Um|||At
+
+Ich werde um sieben hier sein.
+
+I will be here at seven.~~~"
+"Umbringen|||To kill
+
+Ich könnte diesen Idioten umbringen!
+
+I could kill this idiot!~~~"
+"Umgebracht|||Killed
+
+Er hat schon mehrere Menschen umgebracht.
+
+He has already killed several people.~~~"
+"Umgehen|||To bypass
+
+Er ist sich nicht sicher, wie er diese Straße umgehen kann.
+
+He isn’t sure how to bypass this street.~~~"
+"Umsonst|||For nothing
+
+Wir haben die ganze Arbeit umsonst gemacht!
+
+We did all this work for nothing!~~~"
+"Unbedingt|||Absolutely
+
+Wir müssen das unbedingt noch einmal besprechen.
+
+We absolutely have to talk about this again.~~~"
+"Ungewöhnlich|||Unusual
+
+Es ist ungewöhnlich, dass es zu dieser Jahreszeit so heiß ist.
+
+It is unusual, that it is so hot at this time of year.~~~"
+"Unglaublich|||Incredible
+
+Diese Geschichte ist unglaublich!
+
+This story is incredible!~~~"
+"Unmöglich|||Impossible
+
+Es ist unmöglich, alles bis morgen zu erledigen.
+
+It is impossible to get everything done by tomorrow.~~~"
+"Unschuldig|||Innocent
+
+Man könnte meinen, dass du unschuldig seist.
+
+One could think you’re innocent.~~~"
+"Unserer|||Ours
+
+-Ist das euer Wagen? -Ja, das ist unserer.
+
+-Is that your car? -Yes, that’s ours.~~~"
+"Unter|||Below
+
+Die Temperaturen sind unter 0° gefallen.
+
+Temperatures have fallen below 0°.~~~"
+"Unterhalten|||To entertain
+
+Ich bin nicht hier, um euch zu unterhalten.
+
+I am not here to entertain you.~~~"
+"Unterschreiben|||To sign
+
+Sie müssen noch hier unterschreiben und dann ist alles fertig.
+
+You just have to sign here and then everything is ready.~~~"
+"Unterstützen|||To support
+
+Wir werden dich auch in Zukunft finanziell unterstützen.
+
+We will also support you financially in future.~~~"
+"Untersuchen|||To investigate
+
+Die Polizei wird den Fall weiter untersuchen.
+
+The police will investigate the case further.~~~"
+"Unterwegs|||On the way
+
+Wir waren heute viele Stunden unterwegs.
+
+We’ve been on the road for many hours today.~~~"
+"Ursprünglich|||Originally
+
+Meine Freundin Mary kommt ursprünglich aus England.
+
+My friend Mary comes from England originally.~~~"
+"Verändern|||To change
+
+Wir können an diesem Produkt jetzt nichts mehr verändern.
+
+We cannot change anything about this product now.~~~"
+"Verändert|||Changed
+
+Seit er mit Laura zusammen ist, hat er sich total verändert.
+
+He has completely changed since getting together with Laura.~~~"
+"Verantwortlich|||Responsible
+
+Du bist für die Kinder verantwortlich und hättest besser aufpassen sollen!
+
+You are responsible for the children and should have paid more attention!~~~"
+"Verarschen|||To mock
+
+Es ist nicht nett, andere Leute zu verarschen.
+
+It is not nice to mock other people.~~~"
+"Verbinden|||To connect
+
+Die Busse verbinden die Dörfer mit der Stadt.
+
+The busses connect the villages to the city.~~~"
+"Verbracht|||Spent
+
+Wir haben sieben Tage in Lissabon verbracht.
+
+We have spent seven days in Lisbon.~~~"
+"Verbrennen|||To burn
+
+Er wird alle Beweise verbrennen, bevor die Polizei kommt.
+
+He will burn all evidence before the police arrives.~~~"
+"Verbringen|||To spend (time)
+
+Wir sollten versuchen, mehr Zeit miteinander zu verbringen.
+
+We should try to spend more time together.~~~"
+"Verbunden|||Connected
+
+Er ist immer noch nicht mit dem Internet verbunden.
+
+He still isn’t connected to the internet.~~~"
+"Verdammen|||To condemn
+
+Man wird ihn zu einer Freiheitsstrafe verdammen.
+
+They will condemn him to a custodial sentence.~~~"
+"Verdammt|||Damn it
+
+Verdammt! Ich kann meinen Reisepass nicht finden!
+
+Damn it! I can’t find my passport!~~~"
+"Verdammter|||Damned
+
+Er ist ein verdammter Lügner!
+
+He is a damned liar!~~~"
+"Verdienen|||To earn
+
+Hier kann man viel Geld verdienen.
+
+You can earn a lot of money here.~~~"
+"Verdient|||Deserves
+
+Sie verdient eine Gehaltserhöhung.
+
+She deserves a pay rise.~~~"
+"Verfluchen|||To curse
+
+Ich könnte dieses Geschäft verfluchen!
+
+I could curse this company!~~~"
+"Verfolgen|||To pursue
+
+Die Polizisten verfolgen den Einbrecher.
+
+The policemen pursue the robber.~~~"
+"Verfolgt|||Followed
+
+Dieser Typ hat mich schon vor ein paar Wochen verfolgt!
+
+This guy already followed me a few weeks ago!~~~"
+"Vergeben|||To forgive
+
+Es ist oft schwierig, Menschen ihr Handeln zu vergeben.
+
+It is often difficult to forgive people their actions.~~~"
+"Verhaften|||To arrest
+
+Sie werden den Dieb in wenigen Minute verhaften.
+
+They will arrest the thief in a few minutes.~~~"
+"Verhaftet|||Arrested
+
+Endlich haben sie den Mörder verhaftet.
+
+They finally arrested the murderer.~~~"
+"Verhalten|||Restrained
+
+Er ist sehr schüchtern und verhalten.
+
+He is very shy and restrained.~~~"
+"Verhindern|||To prevent
+
+Wir können nicht verhindern, dass Unfälle passieren.
+
+We cannot prevent accidents from happening.~~~"
+"Verkauft|||Sold
+
+Letzte Woche haben wir alle Bilder verkauft.
+
+Last week we sold all paintings.~~~"
+"Verlangen|||To require
+
+Das kannst du nicht von mir verlangen.
+
+You cannot require me to do this.~~~"
+"Verlangt|||Required
+
+Von den neuen Mitarbeitern wird viel Arbeit verlangt.
+
+A lot of work is required from the new employees.~~~"
+"Verlassen|||To leave
+
+Er kann nicht glauben, dass ihn seine Frau verlassen hat.
+
+He cannot believe that his wife has left him.~~~"
+"Verletzen|||To hurt
+
+Sie will ihn mit ihren Worten verletzen.
+
+She wants to hurt him with her words.~~~"
+"Verletzt|||Upset
+
+Dein Kommentar hat mich wirklich verletzt.
+
+Your comment really upset me.~~~"
+"Verliebt|||In love
+
+Michael und Anna sind sehr verliebt.
+
+Michael and Anna are very much in love.~~~"
+"Verlieren|||To lose
+
+Niemand möchte dieses Spiel verlieren.
+
+No one wants to lose this game.~~~"
+"Verloren|||Lost
+
+Hast du den Verstand verloren?
+
+Have you lost your mind?~~~"
+"Vermissen|||To miss
+
+Ich werde dich und deine Familie sehr vermissen.
+
+I will miss you and your family a lot.~~~"
+"Vermisst|||Missing
+
+Der Junge wird nun schon seit mehr als 24 Stunden vermisst.
+
+The boy has been missing for over 24 hours now.~~~"
+"Vermuten|||To suspect
+
+Wir vermuten, dass sie ihren Mann betrügt.
+
+We suspect that she is cheating on her husband.~~~"
+"Vermutlich|||Presumably
+
+Sarah ist vermutlich schon nach Hause gegangen.
+
+Presumably Sarah already went home.~~~"
+"Vernichten|||To destroy
+
+Unsere Aufgabe ist es, diese Dokumente zu vernichten.
+
+Our job is to destroy these documents.~~~"
+"Vernünftig|||Reasonable
+
+Es fällt ihm schwer, vernünftig zu sein.
+
+It is hard for him to be reasonable.~~~"
+"Verpassen|||To miss
+
+Es wäre schade, wenn wir diese Vorstellung verpassen würden.
+
+It would be a shame if we missed this performance.~~~"
+"Verpasst|||Missed
+
+Weil er zu spät angekommen ist, hat er seinen Zug verpasst.
+
+He missed his train because he arrived late.~~~"
+"Verraten|||To reveal
+
+Sie möchte mir ihr Geheimnis nicht verraten.
+
+She does not want to reveal her secret to me.~~~"
+"Verrücken|||To shift
+
+Wir müssen diese Möbel verrücken.
+
+We need to shift the furniture.~~~"
+"Verschieden|||Different
+
+Obwohl sie Geschwister sind, sind sie sehr verschieden.
+
+Although they are siblings, they are very different.~~~"
+"Verschiedene|||Various
+
+Im Deutschen existieren verschiedene Satzarten.
+
+There are various types of sentences in German.~~~"
+"Verschwenden|||To waste
+
+Jeden Tag verschwenden wir sehr viel Essen.
+
+Every day we waste a lot of food.~~~"
+"Verschwinden|||To disappear
+
+In unserem Büro verschwinden ständig Kulis!
+
+Pens constantly disappear in our office!~~~"
+"Verschwunden|||Disappeared
+
+Das Mädchen ist gestern spurlos verschwunden.
+
+Yesterday the girl disappeared without a trace.~~~"
+"Versprechen|||To promise
+
+Du musst mir versprechen, nichts zu sagen.
+
+You have to promise me not to say anything.~~~"
+"Versprochen|||Promised
+
+Du hast mir versprochen, dass du nicht mehr rauchen wirst.
+
+You promised me that you won’t smoke anymore.~~~"
+"Verstanden|||Understood
+
+Du hast immer noch nicht verstanden, was ich meine.
+
+You still haven’t understood what I mean.~~~"
+"Verstecken|||To hide
+
+Du kannst dich nicht vor mir verstecken.
+
+You cannot hide from me.~~~"
+"Versteckt|||Hidden
+
+Kannst du mir sagen, wo du die Schokolade versteckt hast?
+
+Can you tell me where you’ve hidden the chocolate?~~~"
+"Versuchen|||To try
+
+Ich werde mein Bestes versuchen.
+
+I will try my best.~~~"
+"Versucht|||Tries
+
+Er versucht, alles selbst zu machen.
+
+He tries to do everything on his own.~~~"
+"Verteidigen|||To defend
+
+Ich werde dich nicht länger verteidigen.
+
+I will no longer defend you.~~~"
+"Vertrauen|||To trust
+
+Er glaubt nicht, dass er seiner Freundin vertrauen kann.
+
+He doesn’t think he can trust his girlfriend.~~~"
+"Vertraut|||Familiar
+
+Diese Gegend ist mir schon sehr vertraut.
+
+This area is very familiar to me.~~~"
+"Verursacht|||Caused
+
+Der Regen hat Überschwemmungen verursacht.
+The rain caused floods.
+
+Rauchen verursacht viele Krankheiten.
+Smoking causes many diseases.
+
+Der Fehler wurde durch Unachtsamkeit verursacht.
+The mistake was caused by carelessness.
+
+Lärm kann Stress verursachen.
+Noise can cause stress.~~~"
+"Verwenden|||To use
+
+Wir sollten versuchen, weniger Plastik zu verwenden.
+
+We should try to use less plastic.~~~"
+"Verwirrt|||Confused
+
+All diese Informationen haben mich sehr verwirrt.
+
+All this information has made me very confused.~~~"
+"Verzeihen|||To forgive
+
+Ich kann ihm nicht verzeihen, wie er mich behandelt hat.
+
+I cannot forgive him how he treated me.~~~"
+"Viel|||“much” or “a lot” or many”
+
+Ich habe viel Arbeit.
+I have a lot of work.
+
+Sie trinkt viel Wasser.
+She drinks a lot of water.
+
+Wir haben viele Freunde.
+We have many friends. (plural form: viele)
+
+Er arbeitet viel.
+He works a lot.
+
+Ich schlafe nicht viel.
+I don’t sleep much.
+
+Vieles hat sich geändert.
+Many things have changed.
+
+Vieles ist unklar.
+Much is unclear.
+
+Wir haben nicht viel Geld, aber wir sind glücklich.
+We don’t have a lot of money, but we are happy.
+
+Als ich jünger war, habe ich viel gelesen.
+When I was younger, I read a lot.~~~"
+"Vielleicht|||“maybe” or “perhaps” or “possibly”
+
+Vielleicht komme ich später.
+Maybe I’ll come later.
+
+Vielleicht sollten wir einen Plan B machen.
+Perhaps we should make a plan B.
+
+Er ist vielleicht krank.
+He might be sick.
+
+Vielleicht hast du recht.
+Maybe you are right.
+
+Das Wetter ist heute nicht sehr gut, aber vielleicht können wir morgen Tennis spielen gehen.
+Today the weather isn’t very good but maybe we can go and play tennis tomorrow.
+
+Vielleicht gehen wir dieses Wochenende ins Schwimmbad.
+Maybe we are going to the swimming pool this weekend.~~~"
+"Voller|||Full of
+
+Die Badewanne ist voller Wasser.
+
+The bath tub is full of water.~~~"
+"Völlig|||Completely
+
+Das ist doch völlig verrückt!
+
+That’s completely insane!~~~"
+"Vollkommen|||Completely
+
+Es scheint, als hättest du den Verstand vollkommen verloren.
+
+It seems like you completely lost your mind.~~~"
+"Vor|||In front of
+
+Sie hat das Auto vor dem Haus geparkt.
+
+She parked the car in front of the house.~~~"
+"Voraus|||Ahead
+
+Es wäre besser, alles im Voraus zu planen.
+
+It would be better to plan ahead.~~~"
+"Vorbei|||Past
+
+Dieses Auto fährt jeden Tag an meinem Haus vorbei.
+
+This car drives past my house every day.~~~"
+"Vorbereiten|||To prepare
+
+Wir müssen für die Zeremonie morgen noch viel vorbereiten!
+
+We still have to prepare a lot for the ceremony tomorrow!~~~"
+"Vorbereitet|||Prepared
+
+Wir haben uns sehr gut auf die Prüfung vorbereitet.
+
+We have prepared very well for the exam.~~~"
+"Vorher|||Previously
+
+Ich hatte vorher schon einmal Probleme damit.
+
+I previously already had problems with it.~~~"
+"Vorhin|||Earlier
+
+Ich habe ihn vorhin im Laden gesehen.
+
+I saw him in the shop earlier.~~~"
+"Vorne|||Up front
+
+Michael steht vorne an der Bar und redet mit seinem Kumpel.
+
+Michael is up front at the bar and is talking to his mate.~~~"
+"Vorsichtig|||Careful
+
+Bitte sei heute Abend vorsichtig.
+
+Please be careful tonight.~~~"
+"Vorstellen|||To introduce
+
+Ich möchte dir gerne meine Eltern vorstellen.
+
+I would like to introduce my parents to you.~~~"
+"Wachsen|||To grow
+
+Pflanzen wachsen in einem tropischen Klima schneller.
+
+Plants grow faster in a tropical climate.~~~"
+"Wählen|||To choose
+
+Ich weiß nicht, welches Getränk ich wählen soll!
+
+I don’t know which drink to choose!~~~"
+"Wahnsinnig|||Insane
+
+Diese Idee ist doch komplett wahnsinnig!
+
+This idea is completely insane!~~~"
+"Wahren|||To preserve
+
+Es ist wichtig, dass wir unser kulturelles Erbe wahren.
+
+It is important that we preserve our cultural heritage.~~~"
+"Während|||During
+
+Während der Nacht hat es geregnet.
+
+It rained during the night.~~~"
+"Wahrscheinlich|||Probably
+
+Wahrscheinlich ist sie nach Hause gegangen.
+
+She probably went home.~~~"
+"War|||Was
+
+Das war ein schöner Abend.
+
+That was a nice evening.~~~"
+"Wäre|||Would
+
+Es wäre schön, wenn du mich abholen könntest.
+
+It would be nice if you could pick me up.~~~"
+"Wechseln|||To change
+
+Ich möchte mir gerne die Schuhe wechseln, bevor wir spazieren gehen.
+
+I would like to change my shoes before we go for a walk.~~~"
+"Wegen|||Because of
+
+Wegen seines schlechten Verhaltens musste er die Bar verlassen.
+
+Because of his bad behavior he had to leave the bar.~~~"
+"Weglaufen|||To run away
+
+Die Hunde müssen an der Leine bleiben, weil sie sonst weglaufen.
+
+The dogs have to stay on a leash, otherwise they will run away.~~~"
+"Weich|||Soft
+
+Dieser Stoff ist unglaublich weich!
+
+This fabric is incredibly soft!~~~"
+"Weil|||Because
+
+Marianne möchte heute nicht ausgehen, weil sie krank ist.
+
+Marianne does not want to go out today because she is ill.~~~"
+"Weißen|||White
+
+Ich hätte gerne den weißen Hut.
+
+I would like the white hat.~~~"
+"Weitere|||More
+
+Im Keller haben wir noch weitere Flaschen Wein.
+
+We have more bottles of wine in the cellar.~~~"
+"Weiterhin|||Furthermore
+
+Wir wünschen dir weiterhin alles Gute!
+
+Furthermore, we wish you all the best!~~~"
+"Weitermachen|||To continue
+
+Ich kann unter diesen Bedingungen nicht weitermachen.
+
+I cannot continue under these circumstances.~~~"
+"Wem|||Whom
+
+Wem gehört das?
+
+To whom does this belong?~~~"
+"Wen|||Who
+
+Wen nimmst du mit in die Oper?
+
+Who do you take to the opera with you?~~~"
+"Wenden|||To turn around
+
+Wir sollten so schnell wie möglich wenden.
+
+We should turn around as soon as possible.~~~"
+"Wenig|||Not much
+
+Thomas hat momentan wenig Geld.
+
+Thomas does not have much money at the moment.~~~"
+"Weniger|||Less
+
+Ich verdiene weniger als du.
+
+I earn less than you.~~~"
+"Wenigstens|||At least
+
+Es ist kalt, aber wenigstens regnet es nicht.
+
+It’s cold but at least it doesn’t rain.~~~"
+"Wenn|||When/If
+
+Wenn du möchtest, helfe ich dir dabei. Wenn du älter bist, wirst du auch eine Familie wollen.
+
+If you like I can help you with that. When you are older, you will also want to have a family.~~~"
+"Wenn ich könnte|||If I could
+
+Wenn ich könnte, würde ich nach Miami ziehen.
+
+If I could, I would move to Miami.~~~"
+"Werde|||Will
+
+Ich werde morgen ausschlafen.
+
+I will sleep in tomorrow.~~~"
+"Werden|||To become
+
+Nächste Woche werden wir in den Urlaub fahren.
+
+Next week we will go on vacation.~~~"
+"Werfen|||To throw
+
+Das kannst du in den Müll werfen.
+
+You can throw (or toss) that in the garbage.~~~"
+"Weshalb|||Why
+
+Weshalb fragst du mich, wie viel ich verdiene?
+
+Why do you ask me how much I earn?~~~"
+"Wetten|||To bet
+
+Sollen wir wetten?
+
+Do you want to bet?~~~"
+"Wichtig|||Important
+
+Kannst du bitte zuhören? Das hier ist wichtig!
+
+Can you please listen? This is important!~~~"
+"Wichtiger|||Important
+
+Ein wichtiger Kunde ist soeben ins Büro gekommen.
+
+An important client just came to the office.~~~"
+"Wieder|||Again
+
+Wann sehen wir uns wieder?
+
+When will we see each other again?~~~"
+"Wieso|||Why
+
+Wieso kannst du nicht die Wahrheit sagen?
+
+Why can’t you tell the truth?~~~"
+"Will|||Want
+
+Ich will nicht, dass du mit irgendjemandem darüber redest.
+
+I don’t want you talking to anyone about this.~~~"
+"Wird bringen|||will take
+
+Fräulein Fischer wird Sie in Ihr Zimmer bringen.
+
+Miss Fischer will take you to your room.~~~"
+"Wirken|||To work
+
+Mir geht es besser – die Tabletten wirken!
+
+I am feeling better – the pills work!~~~"
+"Witzig|||Funny
+
+Es ist witzig, wenn unsere Katze und unser Hund zusammen spielen.
+
+It is funny when our cat and our dog are playing together.~~~"
+"Woanders|||Somewhere else
+
+Ich möchte woanders sitzen.
+I’d like to sit somewhere else.
+
+Wir können das Problem woanders besprechen.
+We can discuss the problem elsewhere.
+
+Das Geschäft gibt es hier nicht, du musst woanders hingehen.
+The store isn’t here; you have to go somewhere else.~~~"
+"Wofür|||What for
+
+Er ist sich nicht sicher, wofür man diese Teile benutzen kann.
+
+He isn’t sure what these parts can be used for.~~~"
+"Woher|||Where from
+
+Woher kommt ihr?
+
+Where are you from?~~~"
+"Wohin|||Where (to)
+
+Wohin sollen wir am Wochenende gehen?
+
+Where (to) shall we go on the weekend?~~~"
+"Wollen|||“to want” or “to wish”
+
+Ich will ein Eis.
+I want an ice cream.
+
+Willst du mitkommen?
+Do you want to come along?
+
+Er will Arzt werden.
+He wants to become a doctor.
+
+Wir wollen heute ins Kino gehen.
+We want to go to the cinema today.
+
+Manche Leute wissen nicht, was sie wollen.
+Some people do not know what they want.
+
+Alle Kinder wollen im Park spielen.
+All children want to play in the park.~~~"
+"Wollten|||wanted
+
+Sie wollten schon immer einmal nach Paris reisen.
+
+They have always wanted to travel to Paris.~~~"
+"Womit|||With what
+
+Womit soll ich diese Dose öffnen?
+
+What shall I open this can with?~~~"
+"Woran|||By which
+
+Ich werde eine rote Jacke tragen, woran du mich erkennen wirst.
+
+I will wear a red jacket, by which you will recognize me.~~~"
+"Worauf|||Whereupon
+
+Er hat mich beleidigt, worauf ich ihm eine Ohrfeige gegeben habe.
+
+He insulted me, whereupon I smacked him in the face.~~~"
+"Worden|||Been
+
+Sie ist gestern getauft worden.
+
+She has been baptized yesterday.~~~"
+"Worüber|||About what
+
+Es geht mich nichts an, worüber du mit Maria gesprochen hast.
+
+It is none of my business about what you spoke to Maria.~~~"
+"Worum|||What for
+
+Worum hat er dich gestern gebeten?
+
+What did he ask you for yesterday?~~~"
+"Wovon|||What about
+
+Ich habe keine Ahnung, wovon du redest.
+
+I have no idea what you are talking about.~~~"
+"Wozu|||What for
+
+Wozu ist die ganze Arbeit gut?
+
+What is all this work good for?~~~"
+"Wunderschön|||Beautiful
+
+Die Aussicht von hier ist wunderschön.
+
+The view from here is beautiful.~~~"
+"Wütend|||Angry
+
+Es macht mich wütend, wenn du dich so benimmst.
+
+It makes me angry when you are behaving like this.~~~"
+"Zahlen|||To pay
+
+Er möchte die Rechnung zahlen.
+
+He would like to pay the bill.~~~"
+"Zählen|||To count
+
+Kannst du bitte zählen, wie viele Kisten hier sind?
+
+Can you please count how many boxes there are?~~~"
+"Zählt|||Counts
+
+Was zählt ist, dass alle gesund sind.
+
+What counts is that everyone is healthy.~~~"
+"Zeig|||Show (Imperative)
+
+Zeig mir deine Hände!
+
+Show me your hands!~~~"
+"Zerstören|||To destroy
+
+Wenn wir so weitermachen, werden wir unseren Planeten zerstören.
+
+If we continue like this, we will destroy our planet.~~~"
+"Zerstört|||Destroyed
+
+Nach dem Sturm waren viele Häuser zerstört.
+
+Many houses were destroyed after the storm.~~~"
+"Zieh|||Pull (Imperative)
+
+Zieh an der Schnur!
+
+Pull the cord!~~~"
+"Ziehen|||To pull
+
+Du musst daran ziehen.
+
+You have to pull on it.~~~"
+"Ziemlich|||Pretty
+
+Dieses Buch ist ziemlich bekannt.
+
+This book is pretty well-known.~~~"
+"Zu Hause|||At home
+
+Wenn wir zu Hause sind, mache ich uns einen Tee.
+
+When we are at home I will make some tea for us.~~~"
+"Zu sein scheinen|||To seem
+
+Viele Leute sind anders, als sie auf den ersten Blick zu sein scheinen.
+
+Many people are different to what they might seem like at first.~~~"
+"Zu/Um zu|||To/Too/In order to
+
+Heute Abend komme ich um 17:00 Uhr zu dir ins Büro. Ich verspreche, dass ich nicht zu spät kommen werde. Um rechtzeitig dort zu sein, werde ich den Zug nehmen.
+
+This evening I will come to your office at 17:00 (5 PM). I promise, that I will not arrive too late. In order to get there on time I will take the train.~~~"
+"Zufällig|||Randomly
+
+Ich habe gestern zufällig meinen Ex im Supermarkt getroffen.
+
+I randomly ran into my ex at the supermarket yesterday.~~~"
+"Zufrieden|||Satisfied
+
+Wir sind mit dem Hotel wirklich sehr zufrieden.
+
+We are really very satisfied with the hotel.~~~"
+"Zugeben|||To admit
+
+Ich muss zugeben, dass mir der Plan gefällt.
+
+I have to admit that I like the plan.~~~"
+"Zuhören|||To listen
+
+Es tut mir leid, ich kann dir momentan nicht zuhören.
+
+I am sorry, I cannot listen to you at the moment.~~~"
+"Zulassen|||To permit
+
+Er wird nicht zulassen, dass du alleine reist.
+
+He will not permit you to travel alone.~~~"
+"Zuletzt|||Lastly
+
+Und zuletzt möchte ich mich bei Anna bedanken.
+
+And lastly, I would like to thank Anna.~~~"
+"Zum|||For
+
+Ich werde ihr dieses Buch zum Geburtstag schenken.
+
+I will give this book to her for her birthday.~~~"
+"Zumindest|||At least
+
+Es ist sehr kalt, aber zumindest haben wir ein Feuer.
+
+It is very cold but at least we have a fire.~~~"
+"Zur Verfügung stellen|||To provide
+
+Mein Arbeitgeber wird mir eine Wohnung zur Verfügung stellen.
+
+My employer will provide a flat for me.~~~"
+"Zurückkehren|||To return
+
+Sie möchte gerne noch einmal im Leben nach Amsterdam zurückkehren.
+
+She would like to return to Amsterdam one more time in her life.~~~"
+"Zusätzlich|||In addition
+
+Zusätzlich wird verwendet, um mehr Informationen über etwas zu geben.
+
+In addition is used to give more information about something.~~~"
+"Zusehen|||To watch
+
+Ich kann nicht zusehen, wie sie alles zerstören!
+
+I cannot watch them destroy everything!~~~"
+"Zuvor|||Before
+
+Er hat sich noch nie zuvor über das Essen beschwert.
+
+He has never complained about the food before.~~~"
+"Zwar|||Indeed
+
+Du hast zwar recht, aber ich werde es trotzdem nicht kaufen.
+
+You are right indeed, but I still won’t buy it.~~~"
+"Zwingen|||To force
+
+Ich kann dich nicht dazu zwingen, mit mir zu kommen.
+
+I cannot force you to come with me.~~~"
+
+  `;
+  // --------------------------------------------------------------------
+
+  // Robust parser for the custom format:
+  function parseCustomCSV(text){
+    if(!text) return [];
+    // Normalize newlines
+    text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+
+    // Remove any occurrences of ~~~" (Excel sometimes places closing quote AFTER ~~~)
+    text = text.replace(/~~~"\s*/g,'~~~');
+
+    // Trim outer whitespace
+    text = text.trim();
+
+    // If whole file is wrapped in quotes, remove them
+    if(text.startsWith('"') && text.endsWith('"')){
+      text = text.slice(1, -1).trim();
+    }
+
+    // Split into raw rows by ~~~, then clean each row
+    const rawRows = text.split('~~~').map(r => r.trim()).filter(r => r.length>0);
+
+    const out = rawRows.map(r => {
+      // Remove any stray leading/trailing quotes around this row
+      r = r.replace(/^"+/, '').replace(/"+$/, '').trim();
+
+      // Split into columns on first occurrence of |||
+      const parts = r.split('|||');
+      const left = (parts[0]||'').trim();
+      // join remaining parts in case ||| appears inside text (rare)
+      const right = parts.length>1 ? parts.slice(1).join('|||').trim() : '';
+      return { de: left, en: right };
+    });
+
+    return out;
+  }
+
+  function normalizeFirstLetter(s){
+    if(!s) return '#';
+    const ch = s.trim().charAt(0).toUpperCase();
+    if(ch==='Ä') return 'A';
+    if(ch==='Ö') return 'O';
+    if(ch==='Ü') return 'U';
+    if(ch==='ẞ'||ch==='ß') return 'S';
+    if(ch < 'A' || ch > 'Z') return '#';
+    return ch;
+  }
+
+  // parse, sort and initialise
+  let rows = parseCustomCSV(csvData);
+  rows.sort((a,b)=>a.de.localeCompare(b.de,'de',{sensitivity:'base'}));
+  let filtered = rows.slice();
+  let anchors = {};
+
+  function render(data){
+    listEl.innerHTML='';
+    let lastLetter = null;
+    data.forEach((row, idx)=>{
+      const L = normalizeFirstLetter(row.de);
+      if(L !== lastLetter){
+        const anchor = document.createElement('div');
+        anchor.className='section-anchor';
+        anchor.id = `sec-${L}`;
+        listEl.appendChild(anchor);
+        lastLetter = L;
+      }
+
+      const card = document.createElement('article');
+      card.className='card';
+      card.tabIndex=0;
+      card.dataset.idx=idx;
+
+      const de = document.createElement('div');
+      de.className='german';
+      // preserve internal newlines as paragraph spacing
+      de.innerHTML = row.de.replace(/\n{2,}/g,'\n\n').replace(/\n/g,'<br><br>');
+
+      const en = document.createElement('div');
+      en.className='english hidden';
+      en.innerHTML = row.en.replace(/\n{2,}/g,'\n\n').replace(/\n/g,'<br>');
+
+      card.appendChild(de);
+      card.appendChild(en);
+
+      const toggle = ()=>en.classList.toggle('hidden');
+      card.addEventListener('click', toggle);
+      card.addEventListener('keydown', e=>{
+        if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); }
+      });
+
+      listEl.appendChild(card);
+    });
+    buildAnchors(data);
+  }
+
+  function buildAnchors(data){
+    anchors = {}; // reset anchors mapping
+    data.forEach((r,idx)=>{
+      const L = normalizeFirstLetter(r.de);
+      if(!(L in anchors)) anchors[L]=idx;
+    });
+    // render rail
+    railEl.innerHTML = '';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const present = new Set(Object.keys(anchors));
+    letters.forEach(L=>{
+      const btn = document.createElement('button');
+      btn.type='button';
+      btn.textContent = L;
+      if(!present.has(L)){
+        btn.disabled = true;
+        btn.style.opacity = .35;
+      }
+      btn.addEventListener('click', ()=>jumpToLetter(L));
+      railEl.appendChild(btn);
+    });
+  }
+
+  function jumpToLetter(L){
+    if(!(L in anchors)) return;
+    const idx = anchors[L];
+    const target = listEl.querySelector(`[data-idx="${idx}"]`);
+    if(target){
+      target.scrollIntoView({behavior:'smooth', block:'start'});
+      target.classList.add('pulse');
+      setTimeout(()=>target.classList.remove('pulse'),400);
+    }
+  }
+
+  function applyFilter(){
+    const q = (filterEl.value||'').trim().toLowerCase();
+    filtered = q ? rows.filter(r=>r.de.toLowerCase().includes(q)) : rows.slice();
+    render(filtered);
+  }
+
+  // controls
+  collapseBtn.addEventListener('click', ()=>listEl.querySelectorAll('.english').forEach(el=>el.classList.add('hidden')));
+  revealBtn.addEventListener('click', ()=>listEl.querySelectorAll('.english').forEach(el=>el.classList.remove('hidden')));
+  filterEl.addEventListener('input', applyFilter);
+
+  // small pulse style
+  const style = document.createElement('style');
+  style.textContent=`.card.pulse{ outline:2px solid var(--accent); }`;
+  document.head.appendChild(style);
+
+  // initial render
+  render(filtered);
+
+})();
+</script>
+</body>
+</html>
